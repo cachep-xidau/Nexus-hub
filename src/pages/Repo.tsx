@@ -132,36 +132,18 @@ export function Repo() {
                     </div>
                 ) : (
                     <div className="repo-content">
-                        {/* Active Projects */}
-                        {activeProjects.length > 0 && (
-                            <div className="repo-section">
-                                <h3 className="repo-section-title">Active Projects</h3>
-                                <div className="repo-grid">
-                                    {activeProjects.map(p => (
-                                        <ProjectCard key={p.id} project={p} onDelete={handleDelete} />
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                        <div className="repo-grid">
+                            {projects.map(p => (
+                                <ProjectCard key={p.id} project={p} onDelete={handleDelete} />
+                            ))}
 
-                        {/* New / All Projects */}
-                        <div className="repo-section">
-                            <h3 className="repo-section-title">
-                                {activeProjects.length > 0 ? 'New Projects' : 'All Projects'}
-                            </h3>
-                            <div className="repo-grid">
-                                {newProjects.map(p => (
-                                    <ProjectCard key={p.id} project={p} onDelete={handleDelete} />
-                                ))}
-
-                                {/* Add New Card */}
-                                <div className="repo-card repo-card--add" onClick={() => setShowCreate(true)}>
-                                    <div className="repo-add-icon">
-                                        <Plus size={24} />
-                                    </div>
-                                    <h4>Start New Analysis</h4>
-                                    <p>Create a BSA project with AI-powered artifact generation</p>
+                            {/* Add New Card */}
+                            <div className="repo-card repo-card--add" onClick={() => setShowCreate(true)}>
+                                <div className="repo-add-icon">
+                                    <Plus size={24} />
                                 </div>
+                                <h4>Start New Analysis</h4>
+                                <p>Create a BSA project with AI-powered artifact generation</p>
                             </div>
                         </div>
                     </div>
