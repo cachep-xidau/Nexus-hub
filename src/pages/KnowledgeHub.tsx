@@ -268,8 +268,8 @@ export function KnowledgeHub() {
   return (
     <>
       <Header
-        title="Knowledge Hub"
-        subtitle={currentDomain?.name || domainSlug}
+        title={currentDomain?.name || domainSlug}
+        subtitle="Knowledge Hub"
       />
       <div className="page-content">
         {article ? (
