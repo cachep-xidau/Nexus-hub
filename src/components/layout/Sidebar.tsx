@@ -127,11 +127,11 @@ function KnowledgeDomainSidebar({
             </button>
 
             {expanded[s.section] && (
-              <div className="nav-sub-items">
+              <div className="knowledge-nav-articles">
                 {s.articles.map(a => (
                   <button
                     key={a.id}
-                    className={`nav-item nav-sub-item ${articleSlug === a.slug ? 'active' : ''}`}
+                    className={`nav-item ${articleSlug === a.slug ? 'active' : ''}`}
                     onClick={() => navigate(`/knowledge/${domainSlug}/${a.slug}`)}
                   >
                     {a.title}
