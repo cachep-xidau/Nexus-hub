@@ -87,7 +87,6 @@ function KnowledgeDomainSidebar({
       if (d) {
         getArticlesByDomain(d.id).then(s => {
           setSections(s);
-          // Auto-expand all sections
           const exp: Record<string, boolean> = {};
           s.forEach(sec => { exp[sec.section] = true; });
           setExpanded(exp);
@@ -113,30 +112,33 @@ function KnowledgeDomainSidebar({
         <span>Knowledge Hub</span>
       </button>
 
-      {/* Domain title */}
-      <div className="sidebar-replace-title">
+      {/* Domain title with accent bar */}
+      <div className="sidebar-domain-title">
         <DIcon size={18} />
         <span>{domain?.name || domainSlug}</span>
       </div>
 
-      {/* Article tree */}
-      <nav className="sidebar-nav sidebar-replace-nav">
+      {/* Article tree using native nav classes */}
+      <nav className="sidebar-nav">
         {sections.map(s => (
-          <div key={s.section} className="knowledge-tree-section">
+          <div key={s.section}>
+            {/* Section toggle — reuse nav-item as toggle */}
             <button
-              className="knowledge-tree-section-toggle"
+              className="nav-item nav-group-toggle"
               onClick={() => toggleSection(s.section)}
             >
-              {expanded[s.section] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              <span>{s.section}</span>
+              <span className="sidebar-section-label">{s.section}</span>
+              <span className="nav-chevron">
+                {expanded[s.section] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </span>
             </button>
 
             {expanded[s.section] && (
-              <div className="knowledge-tree-items">
+              <div className="nav-sub-items">
                 {s.articles.map(a => (
                   <button
                     key={a.id}
-                    className={`knowledge-tree-item ${articleSlug === a.slug ? 'active' : ''}`}
+                    className={`nav-item nav-sub-item ${articleSlug === a.slug ? 'active' : ''}`}
                     onClick={() => navigate(`/knowledge/${domainSlug}/${a.slug}`)}
                   >
                     {a.title}
