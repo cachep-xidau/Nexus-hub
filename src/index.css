@@ -580,29 +580,34 @@ body {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   cursor: pointer;
   border: 1px solid var(--border);
   background: var(--bg-surface);
   color: var(--text-primary);
-  transition: all 0.2s ease;
+  transition: all var(--transition-base);
+  white-space: nowrap;
 }
 
 .btn:hover {
   background: var(--bg-surface-hover);
+  border-color: var(--border-active);
 }
 
 .btn-primary {
-  background: var(--blue);
+  background: var(--accent);
   color: #fff;
-  border: none;
+  border-color: var(--accent);
+  font-weight: var(--weight-semibold);
 }
 
 .btn-primary:hover {
-  opacity: 0.9;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
   transform: translateY(-1px);
 }
 
@@ -610,6 +615,7 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
 }
 
 .btn-ghost {
@@ -778,6 +784,7 @@ body {
   display: flex;
   gap: var(--space-3);
   flex-wrap: wrap;
+  padding-top: var(--space-1);
 }
 
 /* ── Kanban Board ────────────────────────────────── */
@@ -2132,18 +2139,25 @@ body {
 }
 
 .btn-secondary {
-  padding: 8px 16px;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  border: 1px solid var(--card-border);
-  color: var(--text-dim);
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
   cursor: pointer;
   font-size: var(--text-sm);
-  transition: all 0.2s;
+  font-weight: var(--weight-medium);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  transition: all var(--transition-base);
+  white-space: nowrap;
 }
 
 .btn-secondary:hover {
-  background: var(--hover-bg);
+  background: var(--bg-card-hover);
+  border-color: var(--border-active);
+  color: var(--text-primary);
 }
 
 .icon-btn-subtle {
