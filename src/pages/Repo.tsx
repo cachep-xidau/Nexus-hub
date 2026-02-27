@@ -58,11 +58,6 @@ function ProjectCard({ project, onDelete }: { project: RepoProject; onDelete: (i
                 <p className="repo-card-desc">{project.description}</p>
             )}
             <p className="repo-card-time">Updated {timeAgo(project.updated_at)}</p>
-
-            {/* Footer */}
-            <button className="repo-card-btn" onClick={(e) => { e.stopPropagation(); navigate(`/repo/${project.id}`); }}>
-                Open
-            </button>
         </div>
     );
 }

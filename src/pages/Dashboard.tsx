@@ -45,6 +45,24 @@ export function Dashboard() {
         </div>
 
         <div className="dashboard-section">
+          <h2 className="dashboard-section-title">
+            <TrendingUp size={16} />
+            Quick Actions
+          </h2>
+          <div className="dashboard-actions">
+            <button className="btn btn-primary" onClick={() => navigate('/board/default')}>
+              <Kanban size={16} /> Open Kanban Board
+            </button>
+            <button className="btn btn-secondary" onClick={() => navigate('/inbox')}>
+              <Inbox size={16} /> View Inbox
+            </button>
+            <button className="btn btn-secondary" onClick={() => navigate('/agent')}>
+              <Bot size={16} /> Ask AI Agent
+            </button>
+          </div>
+        </div>
+
+        <div className="dashboard-section">
           <div className="dashboard-section-header">
             <h2 className="dashboard-section-title">
               <Clock size={16} />
@@ -66,24 +84,6 @@ export function Dashboard() {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-
-        <div className="dashboard-section">
-          <h2 className="dashboard-section-title">
-            <TrendingUp size={16} />
-            Quick Actions
-          </h2>
-          <div className="dashboard-actions">
-            <button className="btn btn-primary" onClick={() => navigate('/board/default')}>
-              <Kanban size={16} /> Open Kanban Board
-            </button>
-            <button className="btn btn-secondary" onClick={() => navigate('/inbox')}>
-              <Inbox size={16} /> View Inbox
-            </button>
-            <button className="btn btn-secondary" onClick={() => navigate('/agent')}>
-              <Bot size={16} /> Ask AI Agent
-            </button>
           </div>
         </div>
       </div>
