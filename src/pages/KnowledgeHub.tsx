@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  BookOpen, Search, ArrowLeft,
+  BookOpen, ArrowLeft,
   Rocket, Target, PenTool, FileText,
   Lightbulb, BarChart3, Code2, Palette, Shield,
   Zap, Users, Globe, Layers,
@@ -51,38 +51,29 @@ function DomainCards({ domains, onSelect }: {
   onSelect: (slug: string) => void;
 }) {
   return (
-    <div className="knowledge-landing">
-      <div className="knowledge-landing-header">
-        <BookOpen size={28} />
-        <div>
-          <h1>Knowledge Hub</h1>
-          <p className="text-muted">Chọn module để bắt đầu học</p>
-        </div>
-      </div>
-      <div className="knowledge-domain-grid">
-        {domains.map(d => {
-          const domainColor = DOMAIN_COLORS[d.icon] || DOMAIN_COLORS.BookOpen;
-          return (
-            <button
-              key={d.id}
-              className="knowledge-domain-card"
-              onClick={() => onSelect(d.slug)}
-              aria-label={`${d.name} — ${d.article_count || 0} bài viết`}
-              data-testid={`domain-card-${d.slug}`}
-              style={{ '--domain-color': domainColor.hex, '--domain-color-rgb': domainColor.rgb } as React.CSSProperties}
-            >
-              <div className="knowledge-domain-card-icon">
-                <DomainIcon name={d.icon} size={24} />
-              </div>
-              <h3>{d.name}</h3>
-              <p>{d.description}</p>
-              <span className="knowledge-domain-badge">
-                {d.article_count || 0} bài viết
-              </span>
-            </button>
-          );
-        })}
-      </div>
+    <div className="knowledge-domain-grid">
+      {domains.map(d => {
+        const domainColor = DOMAIN_COLORS[d.icon] || DOMAIN_COLORS.BookOpen;
+        return (
+          <button
+            key={d.id}
+            className="knowledge-domain-card"
+            onClick={() => onSelect(d.slug)}
+            aria-label={`${d.name} — ${d.article_count || 0} bài viết`}
+            data-testid={`domain-card-${d.slug}`}
+            style={{ '--domain-color': domainColor.hex, '--domain-color-rgb': domainColor.rgb } as React.CSSProperties}
+          >
+            <div className="knowledge-domain-card-icon">
+              <DomainIcon name={d.icon} size={24} />
+            </div>
+            <h3>{d.name}</h3>
+            <p>{d.description}</p>
+            <span className="knowledge-domain-badge">
+              {d.article_count || 0} bài viết
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -225,39 +216,11 @@ export function KnowledgeHub() {
 
   // Landing page (no domain selected)
   if (!domainSlug) {
-    const showSearch = searchQuery.trim().length > 1;
     return (
       <>
         <Header title="Knowledge Hub" subtitle={`${domains.length} knowledge domains`} />
         <div className="page-content">
-          <div className="knowledge-search-bar">
-            <Search size={16} />
-            <input
-              type="text"
-              placeholder="Tìm kiếm bài viết..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              aria-label="Tìm kiếm bài viết trong Knowledge Hub"
-            />
-          </div>
-
-          {showSearch ? (
-            <div className="knowledge-search-results">
-              <h3>{searchResults.length} kết quả cho "{searchQuery}"</h3>
-              {searchResults.map(r => (
-                <button
-                  key={r.id}
-                  className="knowledge-search-result"
-                  onClick={() => handleSelectArticle(r.domain_slug, r.slug)}
-                >
-                  <span className="knowledge-search-result-domain">{r.domain_name}</span>
-                  <span className="knowledge-search-result-title">{r.title}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <DomainCards domains={domains} onSelect={handleSelectDomain} />
-          )}
+          <DomainCards domains={domains} onSelect={handleSelectDomain} />
         </div>
       </>
     );
