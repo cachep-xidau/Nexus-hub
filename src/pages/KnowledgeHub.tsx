@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  BookOpen, Search, ChevronDown, ChevronRight,
-  Rocket, Target, PenTool, FileText, ArrowLeft,
+  BookOpen, Search, ArrowLeft,
+  Rocket, Target, PenTool, FileText,
   Lightbulb, BarChart3, Code2, Palette, Shield,
   Zap, Users, Globe, Layers,
 } from 'lucide-react';
@@ -15,7 +15,7 @@ import {
   type KnowledgeDomain, type KnowledgeArticle, type ArticleSection,
 } from '../lib/knowledge-db';
 
-// ── Icon map ────────────────────────────────────────
+// ── Icon map + colors (used by DomainCards landing) ──
 
 const ICON_MAP: Record<string, typeof BookOpen> = {
   Rocket, Target, PenTool, FileText, BookOpen,
@@ -23,29 +23,27 @@ const ICON_MAP: Record<string, typeof BookOpen> = {
   Zap, Users, Globe, Layers,
 };
 
-// Per-domain color palette (mapped by icon name for flexibility)
 const DOMAIN_COLORS: Record<string, { hex: string; rgb: string }> = {
-  Rocket:    { hex: '#F97316', rgb: '249, 115, 22' },   // orange
-  Target:    { hex: '#EF4444', rgb: '239, 68, 68' },     // red
-  PenTool:   { hex: '#8B5CF6', rgb: '139, 92, 246' },    // purple
-  FileText:  { hex: '#06B6D4', rgb: '6, 182, 212' },     // cyan
-  Lightbulb: { hex: '#F59E0B', rgb: '245, 158, 11' },    // amber
-  BarChart3: { hex: '#3B82F6', rgb: '59, 130, 246' },    // blue
-  Code2:     { hex: '#10B981', rgb: '16, 185, 129' },    // emerald
-  Palette:   { hex: '#EC4899', rgb: '236, 72, 153' },    // pink
-  Shield:    { hex: '#6366F1', rgb: '99, 102, 241' },    // indigo
-  Zap:       { hex: '#FBBF24', rgb: '251, 191, 36' },    // yellow
-  Users:     { hex: '#14B8A6', rgb: '20, 184, 166' },    // teal
-  Globe:     { hex: '#0EA5E9', rgb: '14, 165, 233' },    // sky
-  Layers:    { hex: '#A855F7', rgb: '168, 85, 247' },    // violet
-  BookOpen:  { hex: '#6366F1', rgb: '99, 102, 241' },    // indigo (default)
+  Rocket:    { hex: '#F97316', rgb: '249, 115, 22' },
+  Target:    { hex: '#EF4444', rgb: '239, 68, 68' },
+  PenTool:   { hex: '#8B5CF6', rgb: '139, 92, 246' },
+  FileText:  { hex: '#06B6D4', rgb: '6, 182, 212' },
+  Lightbulb: { hex: '#F59E0B', rgb: '245, 158, 11' },
+  BarChart3: { hex: '#3B82F6', rgb: '59, 130, 246' },
+  Code2:     { hex: '#10B981', rgb: '16, 185, 129' },
+  Palette:   { hex: '#EC4899', rgb: '236, 72, 153' },
+  Shield:    { hex: '#6366F1', rgb: '99, 102, 241' },
+  Zap:       { hex: '#FBBF24', rgb: '251, 191, 36' },
+  Users:     { hex: '#14B8A6', rgb: '20, 184, 166' },
+  Globe:     { hex: '#0EA5E9', rgb: '14, 165, 233' },
+  Layers:    { hex: '#A855F7', rgb: '168, 85, 247' },
+  BookOpen:  { hex: '#6366F1', rgb: '99, 102, 241' },
 };
 
 function DomainIcon({ name, size = 18 }: { name: string; size?: number }) {
   const Icon = ICON_MAP[name] || BookOpen;
   return <Icon size={size} />;
 }
-
 // ── Domain Cards (landing) ──────────────────────────
 
 function DomainCards({ domains, onSelect }: {
@@ -89,81 +87,8 @@ function DomainCards({ domains, onSelect }: {
   );
 }
 
-// ── Sidebar Tree ────────────────────────────────────
-
-function KnowledgeSidebar({ domains, sections, activeDomain, activeArticle, onSelectDomain, onSelectArticle }: {
-  domains: KnowledgeDomain[];
-  sections: ArticleSection[];
-  activeDomain: string | null;
-  activeArticle: string | null;
-  onSelectDomain: (slug: string) => void;
-  onSelectArticle: (domainSlug: string, articleSlug: string) => void;
-}) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-
-  // Auto-expand active domain's sections
-  useEffect(() => {
-    if (activeDomain && sections.length > 0) {
-      const autoExpand: Record<string, boolean> = {};
-      sections.forEach(s => { autoExpand[s.section] = true; });
-      setExpanded(autoExpand);
-    }
-  }, [activeDomain, sections]);
-
-  const toggleSection = (section: string) => {
-    setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
-  };
-
-  return (
-    <div className="knowledge-sidebar">
-      <div className="knowledge-sidebar-domains">
-        {domains.map(d => (
-          <button
-            key={d.id}
-            className={`knowledge-sidebar-domain ${activeDomain === d.slug ? 'active' : ''}`}
-            onClick={() => onSelectDomain(d.slug)}
-            title={d.name}
-          >
-            <DomainIcon name={d.icon} size={16} />
-            <span>{d.name}</span>
-          </button>
-        ))}
-      </div>
-
-      {activeDomain && sections.length > 0 && (
-        <div className="knowledge-sidebar-articles">
-          {sections.map(s => (
-            <div key={s.section} className="knowledge-sidebar-section">
-              <button
-                className="knowledge-sidebar-section-toggle"
-                onClick={() => toggleSection(s.section)}
-              >
-                {expanded[s.section] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                <span>{s.section}</span>
-              </button>
-
-              {expanded[s.section] && (
-                <div className="knowledge-sidebar-items">
-                  {s.articles.map(a => (
-                    <button
-                      key={a.id}
-                      className={`knowledge-sidebar-item ${activeArticle === a.slug ? 'active' : ''}`}
-                      onClick={() => onSelectArticle(activeDomain, a.slug)}
-                    >
-                      {a.title}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Main Knowledge Hub Page ─────────────────────────
+// NOTE: Sidebar navigation is handled by the app Sidebar component (Option C)
 
 export function KnowledgeHub() {
   const { domainSlug, articleSlug } = useParams<{ domainSlug?: string; articleSlug?: string }>();
@@ -338,45 +263,34 @@ export function KnowledgeHub() {
     );
   }
 
-  // Domain + Article view
+  // Domain + Article view (sidebar is in app Sidebar)
   return (
     <>
       <Header
         title="Knowledge Hub"
         subtitle={domains.find(d => d.slug === domainSlug)?.name || domainSlug}
       />
-      <div className="knowledge-layout">
-        <KnowledgeSidebar
-          domains={domains}
-          sections={sections}
-          activeDomain={domainSlug}
-          activeArticle={articleSlug || null}
-          onSelectDomain={handleSelectDomain}
-          onSelectArticle={handleSelectArticle}
-        />
+      <div className="page-content">
+        {/* Back button */}
+        <button className="knowledge-back-btn" onClick={() => navigate('/knowledge')}>
+          <ArrowLeft size={14} /> All Domains
+        </button>
 
-        <div className="knowledge-content">
-          {/* Back button */}
-          <button className="knowledge-back-btn" onClick={() => navigate('/knowledge')}>
-            <ArrowLeft size={14} /> All Domains
-          </button>
-
-          {article ? (
-            <article className="knowledge-article" style={{ margin: '0 auto' }}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {article.content}
-              </ReactMarkdown>
-            </article>
-          ) : (
-            <div className="knowledge-empty">
-              <BookOpen size={48} strokeWidth={1} />
-              <p>Chọn bài viết từ menu bên trái</p>
-              <button className="btn btn-secondary" onClick={() => navigate('/knowledge')}>
-                <ArrowLeft size={14} /> Quay lại danh sách
-              </button>
-            </div>
-          )}
-        </div>
+        {article ? (
+          <article className="knowledge-article" style={{ margin: '0 auto' }}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+              {article.content}
+            </ReactMarkdown>
+          </article>
+        ) : (
+          <div className="knowledge-empty">
+            <BookOpen size={48} strokeWidth={1} />
+            <p>Chọn bài viết từ menu bên trái</p>
+            <button className="btn btn-secondary" onClick={() => navigate('/knowledge')}>
+              <ArrowLeft size={14} /> Quay lại danh sách
+            </button>
+          </div>
+        )}
       </div>
     </>
   );

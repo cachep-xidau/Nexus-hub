@@ -4862,3 +4862,78 @@ body {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* ── Knowledge Tree (inside app sidebar - Option C) ── */
+
+.knowledge-tree {
+  margin-top: var(--space-1);
+}
+
+.knowledge-article-tree {
+  padding-left: var(--space-3);
+  margin-top: var(--space-2);
+  border-left: 1px solid var(--border);
+  margin-left: var(--space-5);
+}
+
+.knowledge-tree-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  transition: color var(--transition-fast);
+}
+
+.knowledge-tree-section-toggle:hover {
+  color: var(--text-secondary);
+}
+
+.knowledge-tree-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: var(--space-2);
+}
+
+.knowledge-tree-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  line-height: var(--leading-snug);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.knowledge-tree-item:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.knowledge-tree-item.active {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--accent);
+  font-weight: var(--weight-medium);
+}
+
+.knowledge-tree-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
