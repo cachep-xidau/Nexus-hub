@@ -3909,8 +3909,8 @@ body {
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-5);
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all var(--transition-base);
@@ -3921,7 +3921,12 @@ body {
 .knowledge-domain-card:hover {
   border-color: var(--accent);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.knowledge-domain-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .knowledge-domain-card-icon {
@@ -3969,10 +3974,17 @@ body {
   width: 280px;
   min-width: 260px;
   background: var(--bg-secondary);
-  border-right: 1px solid var(--card-border);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .knowledge-sidebar {
+    width: 220px;
+    min-width: 200px;
+  }
 }
 
 .knowledge-sidebar-domains {
@@ -3980,7 +3992,7 @@ body {
   flex-direction: column;
   gap: 1px;
   padding: var(--space-2);
-  border-bottom: 1px solid var(--card-border);
+  border-bottom: 1px solid var(--border);
 }
 
 .knowledge-sidebar-domain {
@@ -4035,7 +4047,7 @@ body {
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: var(--tracking-wide);
-  transition: color 0.15s;
+  transition: color var(--transition-fast);
 }
 
 .knowledge-sidebar-section-toggle:hover {
@@ -4067,6 +4079,11 @@ body {
 .knowledge-sidebar-item:hover {
   background: var(--hover-bg);
   color: var(--text-primary);
+}
+
+.knowledge-sidebar-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .knowledge-sidebar-item.active {
@@ -4112,17 +4129,17 @@ body {
   font-size: var(--text-2xl);
   font-weight: var(--weight-bold);
   color: var(--text-primary);
-  margin: 0 0 1rem;
-  border-bottom: 1px solid var(--card-border);
-  padding-bottom: 0.5rem;
+  margin: 0 0 var(--space-4);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--space-2);
 }
 
 .knowledge-article h2 {
   font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
   color: var(--text-primary);
-  margin: 2rem 0 0.5rem;
-  border-bottom: 1px solid var(--card-border);
+  margin: var(--space-8) 0 var(--space-2);
+  border-bottom: 1px solid var(--border);
   padding-bottom: var(--space-1);
 }
 
@@ -4130,14 +4147,14 @@ body {
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   color: var(--text-secondary);
-  margin: 1.5rem 0 0.3rem;
+  margin: var(--space-6) 0 var(--space-1);
 }
 
 .knowledge-article h4 {
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   color: var(--text-secondary);
-  margin: 1rem 0 0.25rem;
+  margin: var(--space-4) 0 var(--space-1);
 }
 
 .knowledge-article p {
@@ -4148,14 +4165,14 @@ body {
 
 .knowledge-article ul,
 .knowledge-article ol {
-  padding-left: 1.5rem;
-  margin: 0.5rem 0;
+  padding-left: var(--space-6);
+  margin: var(--space-2) 0;
 }
 
 .knowledge-article li {
   font-size: var(--text-sm);
   color: var(--text-secondary);
-  margin: 0.25rem 0;
+  margin: var(--space-1) 0;
   line-height: var(--leading-relaxed);
 }
 
@@ -4170,11 +4187,11 @@ body {
 
 .knowledge-article pre {
   background: var(--bg-primary);
-  border: 1px solid var(--card-border);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--space-4);
   overflow-x: auto;
-  margin: 1rem 0;
+  margin: var(--space-4) 0;
 }
 
 .knowledge-article pre code {
@@ -4188,7 +4205,7 @@ body {
 .knowledge-article table {
   width: 100%;
   border-collapse: collapse;
-  margin: 1rem 0;
+  margin: var(--space-4) 0;
   font-size: var(--text-sm);
 }
 
@@ -4196,21 +4213,21 @@ body {
   text-align: left;
   padding: var(--space-2) var(--space-3);
   background: var(--bg-secondary);
-  border: 1px solid var(--card-border);
+  border: 1px solid var(--border);
   font-weight: var(--weight-semibold);
   color: var(--text-primary);
 }
 
 .knowledge-article td {
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--card-border);
+  border: 1px solid var(--border);
   color: var(--text-secondary);
 }
 
 .knowledge-article blockquote {
   border-left: 3px solid var(--accent);
-  margin: 1rem 0;
-  padding: var(--space-2) 1rem;
+  margin: var(--space-4) 0;
+  padding: var(--space-2) var(--space-4);
   background: rgba(99, 102, 241, 0.05);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
@@ -4231,8 +4248,8 @@ body {
 
 .knowledge-article hr {
   border: none;
-  border-top: 1px solid var(--card-border);
-  margin: 1.5rem 0;
+  border-top: 1px solid var(--border);
+  margin: var(--space-6) 0;
 }
 
 .knowledge-article strong {
@@ -4262,12 +4279,17 @@ body {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-3);
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-4);
   color: var(--text-dim);
   max-width: 28rem;
+  transition: border-color var(--transition-base);
+}
+
+.knowledge-search-bar:focus-within {
+  border-color: var(--accent);
 }
 
 .knowledge-search-bar input {
@@ -4302,8 +4324,8 @@ body {
   width: 100%;
   text-align: left;
   padding: var(--space-3) var(--space-3);
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -4313,6 +4335,11 @@ body {
 .knowledge-search-result:hover {
   border-color: var(--accent);
   background: rgba(99, 102, 241, 0.05);
+}
+
+.knowledge-search-result:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .knowledge-search-result-domain {
@@ -4797,4 +4824,23 @@ body {
   font-size: var(--text-xs);
   color: var(--text-muted);
   margin-top: var(--space-1);
+}
+
+/* ── Skeleton Loading ─────────────── */
+
+.skeleton {
+  pointer-events: none;
+}
+
+.skeleton-line {
+  background: linear-gradient(90deg, var(--bg-surface) 25%, rgba(255,255,255,0.06) 50%, var(--bg-surface) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+  height: 14px;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }

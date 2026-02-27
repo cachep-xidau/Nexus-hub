@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -178,13 +178,18 @@ export function KnowledgeHub() {
     }
   }, [domainSlug, articleSlug]);
 
-  // Search
+  // Search (debounced)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     if (searchQuery.trim().length > 1) {
-      searchArticles(searchQuery.trim()).then(setSearchResults);
+      searchTimerRef.current = setTimeout(() => {
+        searchArticles(searchQuery.trim()).then(setSearchResults);
+      }, 300);
     } else {
       setSearchResults([]);
     }
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchQuery]);
 
   const handleSelectDomain = (slug: string) => {
@@ -240,7 +245,27 @@ export function KnowledgeHub() {
     return (
       <>
         <Header title="Knowledge Hub" subtitle="Loading..." />
-        <div className="page-content"><div className="loading">Loading...</div></div>
+        <div className="page-content">
+          <div className="knowledge-landing">
+            <div className="knowledge-landing-header">
+              <BookOpen size={28} />
+              <div>
+                <h1>Knowledge Hub</h1>
+                <p className="text-muted">Đang tải...</p>
+              </div>
+            </div>
+            <div className="knowledge-domain-grid">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="knowledge-domain-card skeleton" style={{ minHeight: 160 }}>
+                  <div className="skeleton-line" style={{ width: '40%', height: 44, borderRadius: 'var(--radius-md)' }} />
+                  <div className="skeleton-line" style={{ width: '70%', height: 16, marginTop: 8 }} />
+                  <div className="skeleton-line" style={{ width: '90%', height: 14, marginTop: 4 }} />
+                  <div className="skeleton-line" style={{ width: '30%', height: 12, marginTop: 'auto' }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </>
     );
   }
@@ -259,6 +284,7 @@ export function KnowledgeHub() {
               placeholder="Tìm kiếm bài viết..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
+              aria-label="Tìm kiếm bài viết trong Knowledge Hub"
             />
           </div>
 
@@ -308,7 +334,7 @@ export function KnowledgeHub() {
           </button>
 
           {article ? (
-            <article className="knowledge-article">
+            <article className="knowledge-article" style={{ margin: '0 auto' }}>
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {article.content}
               </ReactMarkdown>
@@ -317,6 +343,9 @@ export function KnowledgeHub() {
             <div className="knowledge-empty">
               <BookOpen size={48} strokeWidth={1} />
               <p>Chọn bài viết từ menu bên trái</p>
+              <button className="btn btn-secondary" onClick={() => navigate('/knowledge')}>
+                <ArrowLeft size={14} /> Quay lại danh sách
+              </button>
             </div>
           )}
         </div>
