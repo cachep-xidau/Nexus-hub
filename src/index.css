@@ -573,6 +573,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: var(--space-6);
+  animation: fadeSlideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 /* ── Buttons ─────────────────────────────────────── */
