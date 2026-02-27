@@ -116,8 +116,7 @@ export function Repo() {
 
     return (
         <>
-            <Header title="Projects Repository" subtitle="Manage your BSA projects and artifacts"
-                addLabel="New Project" onAdd={() => setShowCreate(true)} />
+            <Header title="Projects Repository" subtitle="Manage your BSA projects and artifacts" />
 
             <div className="page-content">
                 {loading ? (
