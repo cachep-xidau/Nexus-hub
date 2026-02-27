@@ -112,17 +112,10 @@ function KnowledgeDomainSidebar({
         <span>Knowledge Hub</span>
       </button>
 
-      {/* Domain title with accent bar */}
-      <div className="sidebar-domain-title">
-        <DIcon size={18} />
-        <span>{domain?.name || domainSlug}</span>
-      </div>
-
-      {/* Article tree using native nav classes */}
+      {/* Section nav — sections are menu items, articles are sub-items */}
       <nav className="sidebar-nav">
         {sections.map(s => (
           <div key={s.section}>
-            {/* Section toggle — reuse nav-item as toggle */}
             <button
               className="nav-item nav-group-toggle"
               onClick={() => toggleSection(s.section)}
