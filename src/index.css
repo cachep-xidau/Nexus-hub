@@ -197,6 +197,11 @@
   --text-muted: #706F6C;
   --text-dim: #9B9A97;
 
+  /* Legacy aliases (used by components) */
+  --card-bg: rgba(255, 255, 255, 0.85);
+  --card-border: rgba(31, 30, 29, 0.12);
+  --hover-bg: rgba(0, 0, 0, 0.04);
+
   --border: rgba(31, 30, 29, 0.12);
   --border-light: rgba(31, 30, 29, 0.06);
   --border-active: rgba(31, 30, 29, 0.25);
