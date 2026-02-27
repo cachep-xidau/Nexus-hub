@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
     Lightbulb, TrendingUp, Building2, Wrench, Briefcase,
-    Send, Loader2, Trash2, Eye, X, Save, Download,
+    Send, Loader2, Trash2, Eye, X, Save, Download, Bot, User,
 } from 'lucide-react';
 import { chatStream } from '../../lib/ai';
 import {
@@ -57,6 +57,7 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
     const [loading, setLoading] = useState(false);
     const [previewDoc, setPreviewDoc] = useState<AnalysisDoc | null>(null);
     const endRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => { loadDocs(); }, [projectId]);
 
@@ -76,6 +77,13 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
             role: 'assistant',
             content: card.greeting,
         }]);
+        setTimeout(() => inputRef.current?.focus(), 200);
+    };
+
+    const closeSlider = () => {
+        setActiveChat(null);
+        setMessages([]);
+        setInput('');
     };
 
     const sendMessage = async () => {
@@ -104,6 +112,7 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
             () => {
                 setLoading(false);
                 setMessages([...newMessages, { role: 'assistant', content: response }]);
+                setTimeout(() => inputRef.current?.focus(), 100);
             }
         );
     };
@@ -128,8 +137,7 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
                     status: 'completed',
                 });
                 await loadDocs();
-                setActiveChat(null);
-                setMessages([]);
+                closeSlider();
                 setLoading(false);
             }
         );
@@ -141,52 +149,7 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
         if (previewDoc?.id === id) setPreviewDoc(null);
     };
 
-    // Active chat view
-    if (activeChat) {
-        const card = ANALYSIS_CARDS.find(c => c.type === activeChat)!;
-        return (
-            <div className="analysis-chat">
-                <div className="analysis-chat-header">
-                    <card.icon size={18} style={{ color: 'var(--accent)' }} />
-                    <span>{card.name}</span>
-                    <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
-                        <button className="btn-secondary" onClick={compileAndSave} disabled={loading || messages.length < 2}
-                            style={{ padding: '6px 12px', fontSize: '0.8125rem' }}>
-                            <Save size={14} /> Compile & Save
-                        </button>
-                        <button className="icon-btn-subtle" onClick={() => { setActiveChat(null); setMessages([]); }}>
-                            <X size={16} />
-                        </button>
-                    </div>
-                </div>
-
-                <div className="prd-chat-messages">
-                    {messages.map((msg, i) => (
-                        <div key={i} className={`chat-msg ${msg.role}`}>
-                            <div className="chat-bubble">{msg.content}</div>
-                        </div>
-                    ))}
-                    {loading && (
-                        <div className="chat-msg assistant">
-                            <div className="chat-bubble"><Loader2 size={14} className="spin" /> Đang suy nghĩ...</div>
-                        </div>
-                    )}
-                    <div ref={endRef} />
-                </div>
-
-                <div className="prd-chat-input">
-                    <textarea value={input} onChange={e => setInput(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                        placeholder="Nhập tin nhắn..." rows={2} disabled={loading} />
-                    <button className="btn-primary" onClick={sendMessage}
-                        disabled={!input.trim() || loading}
-                        style={{ padding: '6px 12px', fontSize: '0.8125rem' }}>
-                        <Send size={14} />
-                    </button>
-                </div>
-            </div>
-        );
-    }
+    const activeCard = activeChat ? ANALYSIS_CARDS.find(c => c.type === activeChat) : null;
 
     return (
         <div className="analysis-tab">
@@ -196,8 +159,7 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
                 <p className="tab-header-subtitle">Phase 1 — Brainstorming & Research</p>
             </div>
 
-            {/* Analysis type cards */}
-            <h3 className="repo-section-title">Start New Analysis</h3>
+            {/* Analysis type cards — no "Start New Analysis" heading */}
             <div className="analysis-cards-grid">
                 {ANALYSIS_CARDS.map(card => (
                     <button key={card.type} className="analysis-card" onClick={() => startSession(card.type)}>
@@ -249,6 +211,96 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
                     </div>
                     <div className="analysis-preview-content">
                         <pre>{previewDoc.content || 'No content'}</pre>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Analysis Slider (side panel overlay) ────────── */}
+            {activeChat && activeCard && (
+                <div className="analysis-slider-overlay" onClick={closeSlider}>
+                    <div className="analysis-slider-panel" onClick={(e) => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="analysis-slider-header">
+                            <div className="analysis-slider-header-left">
+                                <div className="analysis-slider-header-icon">
+                                    <activeCard.icon size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="analysis-slider-title">AI {activeCard.name}</h2>
+                                    <p className="analysis-slider-subtitle">{projectName}</p>
+                                </div>
+                            </div>
+                            <div className="analysis-slider-header-actions">
+                                <button
+                                    className="analysis-slider-action-btn"
+                                    onClick={compileAndSave}
+                                    disabled={loading || messages.length < 2}
+                                >
+                                    <Save size={14} /> Compile
+                                </button>
+                                <button className="analysis-slider-close" onClick={closeSlider} aria-label="Close">
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Messages */}
+                        <div className="analysis-slider-messages">
+                            {messages.map((msg, i) => (
+                                <div key={i} className={`analysis-slider-bubble ${msg.role}`}>
+                                    <div className={`analysis-slider-avatar ${msg.role}`}>
+                                        {msg.role === 'assistant' ? <Bot size={18} /> : <User size={18} />}
+                                    </div>
+                                    <div className="analysis-slider-bubble-wrap">
+                                        <span className="analysis-slider-bubble-label">
+                                            {msg.role === 'assistant' ? 'AI Assistant' : 'You'}
+                                        </span>
+                                        <div className={`analysis-slider-bubble-content ${msg.role}`}>
+                                            {msg.content}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            {loading && (
+                                <div className="analysis-slider-bubble assistant">
+                                    <div className="analysis-slider-avatar assistant"><Bot size={18} /></div>
+                                    <div className="analysis-slider-bubble-wrap">
+                                        <span className="analysis-slider-bubble-label">AI Assistant</span>
+                                        <div className="analysis-slider-bubble-content assistant">
+                                            <Loader2 size={14} className="spin" /> Đang suy nghĩ...
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            <div ref={endRef} />
+                        </div>
+
+                        {/* Input */}
+                        <div className="analysis-slider-input-area">
+                            <div className="analysis-slider-input-wrap">
+                                <textarea
+                                    ref={inputRef}
+                                    className="analysis-slider-textarea"
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                                    placeholder="Nhập tin nhắn..."
+                                    rows={3}
+                                    disabled={loading}
+                                />
+                                <div className="analysis-slider-input-footer">
+                                    <span className="analysis-slider-input-hint">AI can make mistakes. Verify critical requirements.</span>
+                                    <button
+                                        className="analysis-slider-send"
+                                        onClick={sendMessage}
+                                        disabled={!input.trim() || loading}
+                                        aria-label="Send"
+                                    >
+                                        <Send size={18} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
