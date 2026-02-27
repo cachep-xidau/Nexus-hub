@@ -19,14 +19,13 @@ import {
     type RepoProject, type RepoFeature,
 } from '../lib/repo-db';
 
-type Tab = 'overview' | 'prd' | 'artifacts' | 'analysis' | 'connections' | 'settings';
+type Tab = 'overview' | 'analysis' | 'prd' | 'artifacts' | 'connections';
 const TABS: { key: Tab; label: string; icon: typeof FileText }[] = [
     { key: 'overview', label: 'Overview', icon: Layers },
+    { key: 'analysis', label: 'Analysis', icon: Search },
     { key: 'prd', label: 'PRD', icon: FileText },
     { key: 'artifacts', label: 'Artifacts', icon: GitBranch },
-    { key: 'analysis', label: 'Analysis', icon: Search },
     { key: 'connections', label: 'Connections', icon: Plug },
-    { key: 'settings', label: 'Settings', icon: Settings2 },
 ];
 
 export function ProjectDetail() {
@@ -38,7 +37,7 @@ export function ProjectDetail() {
     const initialTab = (() => {
         const params = new URLSearchParams(window.location.search);
         const t = params.get('tab');
-        return t && ['overview', 'prd', 'artifacts', 'analysis', 'connections', 'settings'].includes(t) ? t as Tab : 'overview';
+        return t && ['overview', 'analysis', 'prd', 'artifacts', 'connections'].includes(t) ? t as Tab : 'overview';
     })();
 
     const [project, setProject] = useState<RepoProject | null>(null);
@@ -340,27 +339,6 @@ export function ProjectDetail() {
 
                 {activeTab === 'connections' && (
                     <ConnectionsTab projectId={projectId} />
-                )}
-
-                {activeTab === 'settings' && (
-                    <div className="project-settings">
-                        <h3 className="repo-section-title">Project Settings</h3>
-                        <div className="settings-form">
-                            <label className="form-label">Project Name</label>
-                            <input className="form-input" value={editName}
-                                onChange={e => setEditName(e.target.value)} />
-                            <label className="form-label" style={{ marginTop: '1rem' }}>Description</label>
-                            <textarea className="form-input" rows={4} value={editDesc}
-                                onChange={e => setEditDesc(e.target.value)} />
-                            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
-                                <button className="btn-primary" onClick={handleSave}>Save Changes</button>
-                                <button className="btn-secondary" onClick={handleDelete}
-                                    style={{ color: 'var(--error)', borderColor: 'var(--error)' }}>
-                                    <Trash2 size={14} /> Delete Project
-                                </button>
-                            </div>
-                        </div>
-                    </div>
                 )}
             </div>
         </>

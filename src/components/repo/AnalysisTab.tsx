@@ -11,26 +11,31 @@ import {
 
 type AnalysisType = 'brainstorm' | 'market-research' | 'domain-research' | 'technical-research' | 'product-brief';
 
-const ANALYSIS_CARDS: { type: AnalysisType; name: string; icon: typeof Lightbulb; desc: string; system: string }[] = [
+const ANALYSIS_CARDS: { type: AnalysisType; name: string; icon: typeof Lightbulb; desc: string; system: string; greeting: string }[] = [
     {
         type: 'brainstorm', name: 'Brainstorming', icon: Lightbulb, desc: 'Generate & organize ideas',
         system: 'You are a BMAD Brainstorming Facilitator. Guide creative ideation. Use techniques like SCAMPER, Six Thinking Hats, First Principles. Keep user in generative mode. Vietnamese.',
+        greeting: `Chào bạn! 🧠 Tôi là **BMAD Brainstorming Facilitator** — sẽ hỗ trợ bạn khám phá ý tưởng bằng các kỹ thuật sáng tạo đa dạng.\n\nPhiên brainstorming tốt nhất khi chúng ta vượt qua những ý tưởng hiển nhiên để đến vùng đất mới. Tôi có **30+ kỹ thuật sáng tạo** sẵn sàng — từ SCAMPER, Six Thinking Hats đến Reverse Brainstorming, Chaos Engineering...\n\n**Hãy bắt đầu:**\n1. **Chủ đề / vấn đề** bạn muốn brainstorm là gì?\n2. **Mục tiêu cụ thể** — bạn muốn đạt được gì từ phiên này?`,
     },
     {
         type: 'market-research', name: 'Market Research', icon: TrendingUp, desc: 'Market size, competition',
         system: 'You are a BMAD Market Research Facilitator. Guide market analysis covering TAM/SAM/SOM, competitors, customer segments, trends. Vietnamese.',
+        greeting: `Chào bạn! 📊 Tôi là **BMAD Market Research Facilitator** — chúng ta sẽ cùng nghiên cứu thị trường như hai đồng nghiệp, bạn mang kiến thức domain, tôi mang phương pháp nghiên cứu.\n\n**Hãy bắt đầu với:**\n1. **Thị trường / ngành** bạn muốn nghiên cứu?\n2. **Mục tiêu** nghiên cứu (đánh giá cơ hội, phân tích đối thủ, sizing)?\n3. **Phạm vi** — toàn cầu, khu vực, hay quốc gia cụ thể?\n\nVí dụ: "Thị trường fintech tại Việt Nam", "E-commerce B2B tại SEA"`,
     },
     {
         type: 'domain-research', name: 'Domain Research', icon: Building2, desc: 'Industry deep-dive',
         system: 'You are a BMAD Domain Research Facilitator. Guide domain analysis: fundamentals, competitive landscape, regulations, technology trends. Vietnamese.',
+        greeting: `Chào bạn! 🏭 Tôi là **BMAD Domain Research Facilitator** — sẽ giúp bạn deep-dive vào lĩnh vực mục tiêu với phương pháp nghiên cứu có cấu trúc.\n\n**Hãy bắt đầu với:**\n1. **Lĩnh vực / ngành** cần nghiên cứu sâu?\n2. **Mục tiêu** — hiểu thuật ngữ, quy trình, quy định, hay best practices?\n3. **Mức độ hiểu biết** hiện tại về domain này?\n\nVí dụ: "Healthcare SaaS", "Supply Chain Logistics", "EdTech K-12"`,
     },
     {
         type: 'technical-research', name: 'Technical Research', icon: Wrench, desc: 'Architecture & tech stack',
         system: 'You are a BMAD Technical Research Facilitator. Guide tech evaluation: architecture options, integration patterns, implementation strategy. Use decision matrices. Vietnamese.',
+        greeting: `Chào bạn! 🏗️ Tôi là **BMAD Technical Research Facilitator** — sẽ giúp bạn đánh giá các lựa chọn kỹ thuật và đưa ra quyết định kiến trúc dựa trên evidence.\n\n**Hãy bắt đầu với:**\n1. **Chủ đề kỹ thuật** cần nghiên cứu?\n2. **Bài toán** cần giải quyết?\n3. **Constraints** — ràng buộc (budget, team size, timeline)?\n\nVí dụ: "Chọn database cho real-time analytics", "Kiến trúc microservices vs monolith"`,
     },
     {
         type: 'product-brief', name: 'Product Brief', icon: Briefcase, desc: 'Vision, users, features',
         system: 'You are a BMAD Product Brief Facilitator. Guide co-creation: vision, personas, core features (P0/P1/P2), success metrics, constraints. Vietnamese.',
+        greeting: `Chào bạn! 📝 Tôi là **BMAD Product Brief Facilitator** — chúng ta sẽ cùng xây dựng product brief như hai đồng nghiệp: bạn mang kiến thức domain, tôi mang structured thinking.\n\n**Hãy bắt đầu với WHY trước WHAT:**\n1. **Product Vision** — tầm nhìn sản phẩm?\n2. **Problem Statement** — vấn đề cần giải quyết?\n3. **Target Users** — người dùng mục tiêu?\n4. **Value Proposition** — giá trị cốt lõi?`,
     },
 ];
 
@@ -69,7 +74,7 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
         setActiveChat(type);
         setMessages([{
             role: 'assistant',
-            content: `Chào bạn! Tôi sẽ hướng dẫn bạn thực hiện **${card.name}** cho project **"${projectName}"**.\n\nHãy bắt đầu — bạn muốn khám phá gì?`
+            content: card.greeting,
         }]);
     };
 
