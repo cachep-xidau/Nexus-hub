@@ -5,6 +5,8 @@ import remarkGfm from 'remark-gfm';
 import {
   BookOpen, Search, ChevronDown, ChevronRight,
   Rocket, Target, PenTool, FileText, ArrowLeft,
+  Lightbulb, BarChart3, Code2, Palette, Shield,
+  Zap, Users, Globe, Layers,
 } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import {
@@ -17,6 +19,26 @@ import {
 
 const ICON_MAP: Record<string, typeof BookOpen> = {
   Rocket, Target, PenTool, FileText, BookOpen,
+  Lightbulb, BarChart3, Code2, Palette, Shield,
+  Zap, Users, Globe, Layers,
+};
+
+// Per-domain color palette (mapped by icon name for flexibility)
+const DOMAIN_COLORS: Record<string, { hex: string; rgb: string }> = {
+  Rocket:    { hex: '#F97316', rgb: '249, 115, 22' },   // orange
+  Target:    { hex: '#EF4444', rgb: '239, 68, 68' },     // red
+  PenTool:   { hex: '#8B5CF6', rgb: '139, 92, 246' },    // purple
+  FileText:  { hex: '#06B6D4', rgb: '6, 182, 212' },     // cyan
+  Lightbulb: { hex: '#F59E0B', rgb: '245, 158, 11' },    // amber
+  BarChart3: { hex: '#3B82F6', rgb: '59, 130, 246' },    // blue
+  Code2:     { hex: '#10B981', rgb: '16, 185, 129' },    // emerald
+  Palette:   { hex: '#EC4899', rgb: '236, 72, 153' },    // pink
+  Shield:    { hex: '#6366F1', rgb: '99, 102, 241' },    // indigo
+  Zap:       { hex: '#FBBF24', rgb: '251, 191, 36' },    // yellow
+  Users:     { hex: '#14B8A6', rgb: '20, 184, 166' },    // teal
+  Globe:     { hex: '#0EA5E9', rgb: '14, 165, 233' },    // sky
+  Layers:    { hex: '#A855F7', rgb: '168, 85, 247' },    // violet
+  BookOpen:  { hex: '#6366F1', rgb: '99, 102, 241' },    // indigo (default)
 };
 
 function DomainIcon({ name, size = 18 }: { name: string; size?: number }) {
@@ -40,22 +62,28 @@ function DomainCards({ domains, onSelect }: {
         </div>
       </div>
       <div className="knowledge-domain-grid">
-        {domains.map(d => (
-          <button
-            key={d.id}
-            className="knowledge-domain-card"
-            onClick={() => onSelect(d.slug)}
-          >
-            <div className="knowledge-domain-card-icon">
-              <DomainIcon name={d.icon} size={24} />
-            </div>
-            <h3>{d.name}</h3>
-            <p>{d.description}</p>
-            <span className="knowledge-domain-badge">
-              {d.article_count || 0} bài viết
-            </span>
-          </button>
-        ))}
+        {domains.map(d => {
+          const domainColor = DOMAIN_COLORS[d.icon] || DOMAIN_COLORS.BookOpen;
+          return (
+            <button
+              key={d.id}
+              className="knowledge-domain-card"
+              onClick={() => onSelect(d.slug)}
+              aria-label={`${d.name} — ${d.article_count || 0} bài viết`}
+              data-testid={`domain-card-${d.slug}`}
+              style={{ '--domain-color': domainColor.hex, '--domain-color-rgb': domainColor.rgb } as React.CSSProperties}
+            >
+              <div className="knowledge-domain-card-icon">
+                <DomainIcon name={d.icon} size={24} />
+              </div>
+              <h3>{d.name}</h3>
+              <p>{d.description}</p>
+              <span className="knowledge-domain-badge">
+                {d.article_count || 0} bài viết
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
