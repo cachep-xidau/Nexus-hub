@@ -4000,26 +4000,35 @@ body {
   border-top: none;
   cursor: pointer;
   font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
   color: var(--text-secondary);
   width: 100%;
   text-align: left;
   transition: color var(--transition-fast), gap var(--transition-fast);
 }
 
-.sidebar-replace-header:hover {
-  color: var(--text-primary);
-  gap: var(--space-2);
+.sidebar-replace-header svg {
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border-radius: var(--radius-sm);
+  background: var(--hover-bg);
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
 }
 
-.sidebar-replace-header svg {
-  opacity: 0.6;
-  transition: opacity var(--transition-fast);
+.sidebar-replace-header:hover {
+  color: var(--text-primary);
 }
 
 .sidebar-replace-header:hover svg {
   opacity: 1;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent);
 }
+
+
 
 .sidebar-domain-title {
   position: relative;
