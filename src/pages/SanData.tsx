@@ -141,7 +141,6 @@ export function SanData() {
     const handleSave = useCallback(() => {
         const campaign = companyCampaigns.find(c => c.id === newRow.campaignId);
         if (!campaign) return;
-        // For now, just update local state (API integration would POST/PATCH here)
         if (editingId) {
             setEntries(prev => prev.map(e => e.id === editingId ? { ...e, ...newRow, campaignName: campaign.name, channel: newRow.channel || campaign.channel } : e));
         } else {
@@ -203,34 +202,26 @@ export function SanData() {
     }, [activeCompanyId]);
 
     return (
-        <div className="page-content" >
+        <div className="page-content">
             {/* ═══ Header ═══ */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div className="san-page-header">
                 <div>
-                    <h1 style={{ fontWeight: 800, fontSize: 'var(--text-2xl)' }}>Nhập liệu</h1>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: '0.25rem' }}>Nhập số liệu leads hàng ngày</p>
+                    <h1 className="san-page-title">Nhập liệu</h1>
+                    <p className="san-page-subtitle">Nhập số liệu leads hàng ngày</p>
                 </div>
-                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-                    <button onClick={() => setShowAddRow(true)} className="glass-panel" style={{
-                        padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', border: '1px solid var(--accent)',
-                        fontSize: 'var(--text-xs)', fontFamily: 'inherit', fontWeight: 600, color: 'var(--accent)',
-                        display: 'flex', alignItems: 'center', gap: 4,
-                    }}>
+                <div className="san-actions">
+                    <button onClick={() => setShowAddRow(true)} className="glass-panel san-action-btn">
                         ＋ Thêm dòng
                     </button>
-                    <label className="glass-panel" style={{
-                        padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', border: '1px solid var(--border)',
-                        fontSize: 'var(--text-xs)', fontFamily: 'inherit', fontWeight: 600,
-                        display: 'flex', alignItems: 'center', gap: 4,
-                    }}>
+                    <label className="glass-panel san-action-btn outline">
                         ⤒ Import CSV
-                        <input ref={fileInputRef} type="file" accept=".csv" onChange={handleCSVUpload} style={{ display: 'none' }} />
+                        <input ref={fileInputRef} type="file" accept=".csv" onChange={handleCSVUpload} hidden />
                     </label>
                 </div>
             </div>
 
             {/* ═══ Company Selector Cards ═══ */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '1.25rem' }}>
+            <div className="san-company-grid">
                 {[
                     { id: 'all', shortName: '∑', name: 'Tổng công ty', color: '#6B6F76',
                       campaigns: Object.values(companySummary).reduce((s, v) => s + (v?.campaigns || 0), 0),
@@ -242,30 +233,24 @@ export function SanData() {
                 ].map(card => {
                     const isActive = activeCompanyId === card.id;
                     return (
-                        <div key={card.id} className="glass-panel" onClick={() => setActiveCompanyId(card.id)} style={{
-                            cursor: 'pointer', borderTop: `3px solid ${card.color}`,
-                            outline: isActive ? `2px solid ${card.color}` : 'none', outlineOffset: -1,
-                            opacity: isActive ? 1 : 0.55,
-                            boxShadow: isActive ? 'var(--shadow-card)' : 'none',
-                            transition: 'opacity 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease',
-                            padding: '0.875rem 1rem',
-                        }}
-                            onMouseEnter={e => { if (!isActive) { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = 'var(--shadow-card)'; } }}
-                            onMouseLeave={e => { if (!isActive) { e.currentTarget.style.opacity = '0.55'; e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; } }}
+                        <div key={card.id}
+                            className={`glass-panel san-company-card ${isActive ? 'active' : ''}`}
+                            onClick={() => setActiveCompanyId(card.id)}
+                            style={{ borderTop: `3px solid ${card.color}`, outline: isActive ? `2px solid ${card.color}` : 'none', outlineOffset: -1 }}
                         >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                <div style={{ width: 24, height: 24, borderRadius: 5, background: card.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 'var(--text-xs)' }}>{card.shortName}</div>
-                                <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{card.name}</span>
-                                {isActive && <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', background: card.color, color: 'white', padding: '0.15rem 0.5rem', borderRadius: 9999, fontWeight: 600 }}>Đang chọn</span>}
+                            <div className="san-company-card-header">
+                                <div className="san-company-avatar" style={{ background: card.color }}>{card.shortName}</div>
+                                <span className="san-company-name">{card.name}</span>
+                                {isActive && <span className="san-company-badge" style={{ background: card.color }}>Đang chọn</span>}
                             </div>
-                            <div style={{ display: 'flex', gap: '1rem', fontSize: 'var(--text-sm)' }}>
+                            <div className="san-company-stats">
                                 <div>
-                                    <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>Chiến dịch</div>
-                                    <div style={{ fontWeight: 700 }}>{card.campaigns || '—'}</div>
+                                    <div className="san-company-stat-label">Chiến dịch</div>
+                                    <div className="san-company-stat-value">{card.campaigns || '—'}</div>
                                 </div>
                                 <div>
-                                    <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>Leads</div>
-                                    <div style={{ fontWeight: 700 }}>{card.leads > 0 ? card.leads.toLocaleString('vi-VN') : '—'}</div>
+                                    <div className="san-company-stat-label">Leads</div>
+                                    <div className="san-company-stat-value">{card.leads > 0 ? card.leads.toLocaleString('vi-VN') : '—'}</div>
                                 </div>
                             </div>
                         </div>
@@ -275,99 +260,87 @@ export function SanData() {
 
             {/* Upload toast */}
             {uploadStatus === 'success' && (
-                <div className="glass-panel" style={{ borderLeft: '3px solid var(--green, #10B981)', marginBottom: '1rem', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: 'var(--text-sm)' }}>
-                    ✓ Import CSV thành công!
-                </div>
+                <div className="glass-panel san-toast">✓ Import CSV thành công!</div>
             )}
 
             {/* ═══ Filters ═══ */}
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', gap: 'var(--space-1)', background: 'var(--bg-card)', borderRadius: 'var(--radius-md)', padding: 'var(--space-1)', border: '1px solid var(--border)' }}>
+            <div className="san-filters">
+                <div className="san-filter-group">
                     {TIME_OPTIONS.map(t => (
-                        <button key={t.value} onClick={() => setTimeRange(t.value)} style={{
-                            padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer',
-                            fontSize: 'var(--text-xs)', fontWeight: 600, fontFamily: 'inherit',
-                            background: timeRange === t.value ? 'var(--accent)' : 'transparent',
-                            color: timeRange === t.value ? '#fff' : 'var(--text-secondary)',
-                        }}>
+                        <button key={t.value} onClick={() => setTimeRange(t.value)}
+                            className={`san-filter-btn ${timeRange === t.value ? 'active' : ''}`}>
                             {t.label}
                         </button>
                     ))}
                 </div>
-                <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 0.15rem' }} />
-                <select value={filterChannel} onChange={e => setFilterChannel(e.target.value)} style={{
-                    padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)',
-                    fontSize: 'var(--text-xs)', fontFamily: 'inherit', cursor: 'pointer', minWidth: 140,
-                }}>
+                <div className="san-filter-divider" />
+                <select value={filterChannel} onChange={e => setFilterChannel(e.target.value)} className="san-select">
                     <option value="all">Tất cả kênh</option>
                     {channels.map(ch => <option key={ch} value={ch}>{CHANNEL_LABELS[ch] || ch}</option>)}
                 </select>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{filteredEntries.length} dòng</span>
+                <span className="san-filter-count">{filteredEntries.length} dòng</span>
             </div>
 
             {/* ═══ Data Table ═══ */}
             {loading ? (
-                <div style={{ textAlign: 'center', padding: 'var(--space-16)', color: 'var(--text-muted)' }}>Đang tải...</div>
+                <div className="san-loading">Đang tải...</div>
             ) : (
-                <div className="glass-panel" style={{ overflow: 'auto', padding: 0 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>
+                <div className="glass-panel san-table-wrap">
+                    <table className="san-table">
                         <thead>
                             <tr style={{ background: 'var(--bg-surface)' }}>
-                                <th style={{ ...thStyle, position: 'sticky', left: 0, background: 'var(--bg-surface)', zIndex: 3, minWidth: 80 }}>NGÀY</th>
-                                <th style={{ ...thStyle, position: 'sticky', left: 80, background: 'var(--bg-surface)', zIndex: 3, minWidth: 90 }}>KÊNH</th>
-                                <th style={{ ...thStyle, position: 'sticky', left: 170, background: 'var(--bg-surface)', zIndex: 3, minWidth: 180, borderRight: '2px solid var(--border)' }}>CHIẾN DỊCH</th>
-                                <th style={{ ...thStyle, textAlign: 'center', fontWeight: 700, color: 'var(--accent)' }}>TỔNG</th>
-                                <th style={{ ...thStyle, textAlign: 'center' }}>SPAM</th>
-                                <th style={{ ...thStyle, textAlign: 'center' }}>TIỀM NĂNG</th>
-                                <th style={{ ...thStyle, textAlign: 'center' }}>CHẤT LƯỢNG</th>
-                                <th style={{ ...thStyle, textAlign: 'center' }}>ĐẶT HẸN</th>
-                                <th style={{ ...thStyle, textAlign: 'center' }}>ĐẾN PK</th>
-                                <th style={{ ...thStyle, textAlign: 'center', fontWeight: 700, color: 'var(--green, #10B981)' }}>CHỐT</th>
-                                <th style={{ ...thStyle, textAlign: 'center' }}>BILL</th>
-                                <th style={{ ...thStyle, textAlign: 'right' }}>NS MỤC TIÊU</th>
-                                <th style={{ ...thStyle, textAlign: 'right' }}>NS THỰC TẾ</th>
+                                <th className="sticky-col" style={{ left: 0, minWidth: 80 }}>NGÀY</th>
+                                <th className="sticky-col" style={{ left: 80, minWidth: 90 }}>KÊNH</th>
+                                <th className="sticky-col col-border" style={{ left: 170, minWidth: 180 }}>CHIẾN DỊCH</th>
+                                <th className="center highlight-accent">TỔNG</th>
+                                <th className="center">SPAM</th>
+                                <th className="center">TIỀM NĂNG</th>
+                                <th className="center">CHẤT LƯỢNG</th>
+                                <th className="center">ĐẶT HẸN</th>
+                                <th className="center">ĐẾN PK</th>
+                                <th className="center highlight-green">CHỐT</th>
+                                <th className="center">BILL</th>
+                                <th className="right">NS MỤC TIÊU</th>
+                                <th className="right">NS THỰC TẾ</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredEntries.map(entry => (
-                                <tr key={entry.id} onClick={() => handleEditEntry(entry)} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)', transition: 'background 0.15s' }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
-                                    <td style={{ ...tdStyle, position: 'sticky', left: 0, background: 'var(--bg-card)', zIndex: 2, minWidth: 80, color: 'var(--text-muted)' }}>
+                                <tr key={entry.id} onClick={() => handleEditEntry(entry)}>
+                                    <td className="sticky-col" style={{ left: 0, minWidth: 80, color: 'var(--text-muted)' }}>
                                         {new Date(entry.date).toLocaleDateString('vi-VN')}
                                     </td>
-                                    <td style={{ ...tdStyle, position: 'sticky', left: 80, background: 'var(--bg-card)', zIndex: 2, minWidth: 90 }}>
+                                    <td className="sticky-col" style={{ left: 80, minWidth: 90 }}>
                                         <span style={{ color: CHANNEL_COLORS[entry.channel] || '#6B7280' }}>●</span> {CHANNEL_LABELS[entry.channel] || entry.channel}
                                     </td>
-                                    <td style={{ ...tdStyle, position: 'sticky', left: 170, background: 'var(--bg-card)', zIndex: 2, fontWeight: 500, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 180, borderRight: '2px solid var(--border)' }}>{entry.campaignName}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700, color: 'var(--accent)' }}>{entry.totalLead}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center', color: entry.spam > 0 ? '#EF4444' : 'var(--text-muted)' }}>{entry.spam}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center' }}>{entry.potential}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center' }}>{entry.quality}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center' }}>{entry.booked}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center' }}>{entry.arrived}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700, color: 'var(--green, #10B981)' }}>{entry.closed}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center' }}>{entry.bill}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'right' }}>{entry.budgetTarget > 0 ? formatVND(entry.budgetTarget) : '—'}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'right' }}>{entry.budgetActual > 0 ? formatVND(entry.budgetActual) : '—'}</td>
+                                    <td className="sticky-col col-border" style={{ left: 170, fontWeight: 500, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 180 }}>{entry.campaignName}</td>
+                                    <td className="center highlight-accent">{entry.totalLead}</td>
+                                    <td className={`center ${entry.spam > 0 ? 'highlight-red' : ''}`}>{entry.spam}</td>
+                                    <td className="center">{entry.potential}</td>
+                                    <td className="center">{entry.quality}</td>
+                                    <td className="center">{entry.booked}</td>
+                                    <td className="center">{entry.arrived}</td>
+                                    <td className="center highlight-green">{entry.closed}</td>
+                                    <td className="center">{entry.bill}</td>
+                                    <td className="right">{entry.budgetTarget > 0 ? formatVND(entry.budgetTarget) : '—'}</td>
+                                    <td className="right">{entry.budgetActual > 0 ? formatVND(entry.budgetActual) : '—'}</td>
                                 </tr>
                             ))}
                             {filteredEntries.length > 0 && (
-                                <tr style={{ fontWeight: 700, borderTop: '2px solid var(--border)', background: 'var(--bg-surface)' }}>
-                                    <td style={{ ...tdStyle, position: 'sticky', left: 0, background: 'var(--bg-surface)', zIndex: 2, minWidth: 80 }}>TỔNG</td>
-                                    <td style={{ ...tdStyle, position: 'sticky', left: 80, background: 'var(--bg-surface)', zIndex: 2, minWidth: 90 }}></td>
-                                    <td style={{ ...tdStyle, position: 'sticky', left: 170, background: 'var(--bg-surface)', zIndex: 2, minWidth: 180, borderRight: '2px solid var(--border)' }}></td>
-                                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--accent)' }}>{totals.totalLead}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center', color: '#EF4444' }}>{totals.spam}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center' }}>{totals.potential}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center' }}>{totals.quality}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center' }}>{totals.booked}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center' }}>{totals.arrived}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--green, #10B981)' }}>{totals.closed}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'center' }}>{totals.bill}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'right' }}>{totals.budgetTarget > 0 ? formatVND(totals.budgetTarget) : '—'}</td>
-                                    <td style={{ ...tdStyle, textAlign: 'right' }}>{totals.budgetActual > 0 ? formatVND(totals.budgetActual) : '—'}</td>
+                                <tr className="total-row">
+                                    <td className="sticky-col" style={{ left: 0, minWidth: 80 }}>TỔNG</td>
+                                    <td className="sticky-col" style={{ left: 80, minWidth: 90 }}></td>
+                                    <td className="sticky-col col-border" style={{ left: 170, minWidth: 180 }}></td>
+                                    <td className="center highlight-accent">{totals.totalLead}</td>
+                                    <td className="center highlight-red">{totals.spam}</td>
+                                    <td className="center">{totals.potential}</td>
+                                    <td className="center">{totals.quality}</td>
+                                    <td className="center">{totals.booked}</td>
+                                    <td className="center">{totals.arrived}</td>
+                                    <td className="center highlight-green">{totals.closed}</td>
+                                    <td className="center">{totals.bill}</td>
+                                    <td className="right">{totals.budgetTarget > 0 ? formatVND(totals.budgetTarget) : '—'}</td>
+                                    <td className="right">{totals.budgetActual > 0 ? formatVND(totals.budgetActual) : '—'}</td>
                                 </tr>
                             )}
                         </tbody>
@@ -376,10 +349,10 @@ export function SanData() {
             )}
 
             {filteredEntries.length === 0 && !loading && (
-                <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)', marginTop: '1rem' }}>
-                    <div style={{ fontSize: 32, marginBottom: '0.75rem' }}>📄</div>
-                    <p style={{ fontWeight: 500 }}>Chưa có dữ liệu</p>
-                    <p style={{ fontSize: 'var(--text-xs)' }}>Nhấn "Thêm dòng" hoặc "Import CSV" để bắt đầu nhập liệu</p>
+                <div className="glass-panel san-empty">
+                    <div className="san-empty-icon">📄</div>
+                    <p className="san-empty-title">Chưa có dữ liệu</p>
+                    <p className="san-empty-desc">Nhấn "Thêm dòng" hoặc "Import CSV" để bắt đầu nhập liệu</p>
                 </div>
             )}
 
@@ -390,95 +363,85 @@ export function SanData() {
                 const dateDisplay = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
 
                 return (
-                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={resetForm}>
-                        <div className="glass-panel" style={{ width: '100%', maxWidth: 540, maxHeight: '90vh', overflow: 'auto', padding: 0 }} onClick={e => e.stopPropagation()}>
-
+                    <div className="san-modal-overlay" onClick={resetForm}>
+                        <div className="glass-panel san-modal" onClick={e => e.stopPropagation()}>
                             {/* Modal Header */}
-                            <div style={{ background: `${activeCompany?.color || '#6B7280'}15`, borderBottom: `2px solid ${activeCompany?.color || '#6B7280'}`, padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                    <div style={{ width: 36, height: 36, borderRadius: 8, background: activeCompany?.color || '#6B7280', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 'var(--text-lg)' }}>{activeCompany?.shortName[0] || '?'}</div>
+                            <div className="san-modal-header" style={{ background: `${activeCompany?.color || '#6B7280'}15`, borderBottomColor: activeCompany?.color || '#6B7280' }}>
+                                <div className="san-modal-header-info">
+                                    <div className="san-modal-avatar" style={{ background: activeCompany?.color || '#6B7280' }}>{activeCompany?.shortName[0] || '?'}</div>
                                     <div>
-                                        <div style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>{editingEntry ? 'Chỉnh sửa' : (activeCompany?.name || 'Công ty')}</div>
-                                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{editingEntry ? editingEntry.campaignName : `Nhập số liệu — ${dateDisplay}`}</div>
+                                        <div className="san-modal-title">{editingEntry ? 'Chỉnh sửa' : (activeCompany?.name || 'Công ty')}</div>
+                                        <div className="san-modal-subtitle">{editingEntry ? editingEntry.campaignName : `Nhập số liệu — ${dateDisplay}`}</div>
                                     </div>
                                 </div>
-                                <button onClick={resetForm} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, fontSize: 18 }}>✕</button>
+                                <button onClick={resetForm} className="san-modal-close">✕</button>
                             </div>
 
                             {/* Form Body */}
-                            <div style={{ padding: '1.25rem 1.5rem' }}>
-                                {/* Campaign info */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                            <div className="san-modal-body">
+                                <div className="san-form-grid cols-2">
                                     <div>
-                                        <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: '0.3rem', display: 'block' }}>Kênh</label>
+                                        <label className="san-form-label">Kênh</label>
                                         <select value={newRow.channel} onChange={e => setNewRow(p => ({ ...p, channel: e.target.value, campaignId: '' }))}
-                                            style={{ ...inputStyle, width: '100%' }}>
+                                            className="san-form-input">
                                             <option value="">Chọn kênh...</option>
                                             {channels.map(ch => <option key={ch} value={ch}>{CHANNEL_LABELS[ch] || ch}</option>)}
                                         </select>
                                     </div>
                                     <div>
-                                        <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: '0.3rem', display: 'block' }}>Chiến dịch</label>
+                                        <label className="san-form-label">Chiến dịch</label>
                                         <select value={newRow.campaignId} onChange={e => setNewRow(p => ({ ...p, campaignId: e.target.value }))}
-                                            style={{ ...inputStyle, width: '100%' }}>
+                                            className="san-form-input">
                                             <option value="">Chọn chiến dịch...</option>
                                             {filteredCampaignsForAdd.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                         </select>
                                     </div>
                                 </div>
 
-                                <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 1.25rem' }} />
+                                <hr className="san-form-divider" />
 
-                                {/* Leads fields */}
-                                <h3 style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.65rem' }}>Số liệu Leads</h3>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem 0.65rem', marginBottom: '1.25rem' }}>
+                                <h3 className="san-form-section-title">Số liệu Leads</h3>
+                                <div className="san-form-grid cols-4">
                                     {([
                                         { key: 'potential' as const, label: 'Tiềm năng' },
                                         { key: 'quality' as const, label: 'Chất lượng' },
                                         { key: 'booked' as const, label: 'Đặt hẹn' },
                                         { key: 'arrived' as const, label: 'Đến PK' },
-                                        { key: 'closed' as const, label: 'Chốt', color: 'var(--green, #10B981)' },
+                                        { key: 'closed' as const, label: 'Chốt', color: 'var(--green)' },
                                         { key: 'bill' as const, label: 'Bill' },
                                         { key: 'totalLead' as const, label: 'Tổng', color: 'var(--accent)' },
-                                        { key: 'spam' as const, label: 'Spam', color: '#EF4444' },
+                                        { key: 'spam' as const, label: 'Spam', color: 'var(--red)' },
                                     ]).map(f => (
                                         <div key={f.key}>
-                                            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: '0.15rem', display: 'block', color: f.color || 'var(--text-primary)' }}>{f.label}</label>
+                                            <label className="san-form-label" style={f.color ? { color: f.color } : undefined}>{f.label}</label>
                                             <input type="number" min={0} value={newRow[f.key] || ''}
                                                 onChange={e => setNewRow(p => ({ ...p, [f.key]: parseInt(e.target.value) || 0 }))}
-                                                style={{ ...inputStyle, width: '100%', textAlign: 'center' }} />
+                                                className="san-form-input" style={{ textAlign: 'center' }} />
                                         </div>
                                     ))}
                                 </div>
 
-                                <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0 0 1.25rem' }} />
+                                <hr className="san-form-divider" />
 
-                                {/* Budget */}
-                                <h3 style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.65rem' }}>Ngân sách</h3>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem', marginBottom: '1.5rem' }}>
+                                <h3 className="san-form-section-title">Ngân sách</h3>
+                                <div className="san-form-grid cols-2">
                                     <div>
-                                        <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: '0.15rem', display: 'block' }}>NS Mục tiêu</label>
+                                        <label className="san-form-label">NS Mục tiêu</label>
                                         <input type="number" min={0} value={newRow.budgetTarget || ''}
                                             onChange={e => setNewRow(p => ({ ...p, budgetTarget: parseInt(e.target.value) || 0 }))}
-                                            style={{ ...inputStyle, width: '100%' }} />
+                                            className="san-form-input" />
                                     </div>
                                     <div>
-                                        <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: '0.15rem', display: 'block' }}>NS Thực tế</label>
+                                        <label className="san-form-label">NS Thực tế</label>
                                         <input type="number" min={0} value={newRow.budgetActual || ''}
                                             onChange={e => setNewRow(p => ({ ...p, budgetActual: parseInt(e.target.value) || 0 }))}
-                                            style={{ ...inputStyle, width: '100%' }} />
+                                            className="san-form-input" />
                                     </div>
                                 </div>
 
-                                {/* Actions */}
-                                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                                    <button onClick={resetForm} className="glass-panel" style={{ flex: 1, justifyContent: 'center', padding: 'var(--space-3)', cursor: 'pointer', border: '1px solid var(--border)', fontFamily: 'inherit', fontSize: 'var(--text-sm)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>Hủy</button>
-                                    <button onClick={handleSave} disabled={!newRow.campaignId} style={{
-                                        flex: 1, justifyContent: 'center', padding: 'var(--space-3)', cursor: newRow.campaignId ? 'pointer' : 'not-allowed',
-                                        border: 'none', borderRadius: 'var(--radius-sm)', fontFamily: 'inherit', fontSize: 'var(--text-sm)', fontWeight: 600,
-                                        background: newRow.campaignId ? 'var(--accent)' : 'var(--bg-surface)', color: newRow.campaignId ? '#fff' : 'var(--text-muted)',
-                                        display: 'flex', alignItems: 'center', gap: 4,
-                                    }}>
+                                <div className="san-form-actions">
+                                    <button onClick={resetForm} className="btn btn-secondary">Hủy</button>
+                                    <button onClick={handleSave} disabled={!newRow.campaignId} className="btn btn-primary">
                                         ✓ {editingEntry ? 'Cập nhật' : 'Lưu'}
                                     </button>
                                 </div>
@@ -490,19 +453,3 @@ export function SanData() {
         </div>
     );
 }
-
-const thStyle: React.CSSProperties = {
-    padding: '0.625rem 0.75rem', fontSize: 'var(--text-xs)', fontWeight: 600,
-    color: 'var(--text-muted)', textAlign: 'left', whiteSpace: 'nowrap',
-    borderBottom: '1px solid var(--border)',
-};
-
-const tdStyle: React.CSSProperties = {
-    padding: '0.5rem 0.75rem', fontSize: 'var(--text-sm)',
-};
-
-const inputStyle: React.CSSProperties = {
-    padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)',
-    border: '1px solid var(--border)', background: 'var(--bg-card)',
-    color: 'var(--text-primary)', fontSize: 'var(--text-sm)', fontFamily: 'inherit',
-};

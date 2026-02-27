@@ -279,10 +279,10 @@ export function SanOverview() {
     return (
         <div className="page-content">
             {/* ═══ Header ═══ */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+            <div className="san-page-header">
                 <div>
-                    <h1 style={{ fontWeight: 800, fontSize: 'var(--text-2xl)' }}>Tổng quan</h1>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: '0.25rem' }}>{activeLabel}</p>
+                    <h1 className="san-page-title">Tổng quan</h1>
+                    <p className="san-page-subtitle">{activeLabel}</p>
                 </div>
                 <div style={{ display: 'flex', gap: 'var(--space-1)', background: 'var(--bg-card)', borderRadius: 'var(--radius-md)', padding: 'var(--space-1)', border: '1px solid var(--border)' }}>
                     {TIME_OPTIONS.map(t => (
@@ -299,7 +299,7 @@ export function SanOverview() {
             </div>
 
             {loading ? (
-                <div style={{ textAlign: 'center', padding: 'var(--space-16)', color: 'var(--text-muted)' }}>Đang tải dữ liệu...</div>
+                <div className="san-loading">Đang tải dữ liệu...</div>
             ) : (
                 <>
                     {/* ═══ 4 Selector Cards ═══ */}
@@ -402,13 +402,13 @@ export function SanOverview() {
                                 ({periodLabel} — {activeLabel})
                             </span>
                         </h2>
-                        <div className="glass-panel" style={{ overflow: 'auto', padding: 0 }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>
+                        <div className="glass-panel" className="san-table-wrap">
+                            <table className="san-table">
                                 <thead>
                                     <tr style={{ background: 'var(--bg-surface)' }}>
-                                        <th style={thStyle}>KÊNH</th>
+                                        <th className="san-th">KÊNH</th>
                                         {([['leads', 'LEADS'], ['quality', 'CHẤT LƯỢNG'], ['spend', 'CHI TIÊU'], ['cpl', 'CPL']] as const).map(([key, label]) => (
-                                            <th key={key} onClick={() => handleSort(key)} style={{ ...thStyle, textAlign: key === 'spend' || key === 'cpl' ? 'right' : 'center', cursor: 'pointer', userSelect: 'none', ...(key === 'leads' ? { fontWeight: 700, color: 'var(--accent)' } : {}) }}>
+                                            <th key={key} onClick={() => handleSort(key)} className="san-th" style={{ textAlign: key === 'spend' || key === 'cpl' ? 'right' : 'center', cursor: 'pointer', userSelect: 'none', ...(key === 'leads' ? { fontWeight: 700, color: 'var(--accent)' } : {}) }}>
                                                 {label}{sortKey === key && <span style={{ marginLeft: 4 }}>{sortDir === 'desc' ? '↓' : '↑'}</span>}
                                             </th>
                                         ))}
@@ -417,22 +417,22 @@ export function SanOverview() {
                                 <tbody>
                                     {sortedChannels.map(ch => (
                                         <tr key={ch.channel} style={{ borderBottom: '1px solid var(--border)' }}>
-                                            <td style={{ ...tdStyle, fontWeight: 500 }}>
+                                            <td className="san-td" style={{ fontWeight: 500 }}>
                                                 <span style={{ color: CHANNEL_COLORS[ch.channel] || '#6B7280' }}>●</span> {CHANNEL_LABELS[ch.channel] || ch.channel}
                                             </td>
-                                            <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700, color: 'var(--accent)' }}>{ch.leads.toLocaleString('vi-VN')}</td>
-                                            <td style={{ ...tdStyle, textAlign: 'center' }}>{ch.quality > 0 ? ch.quality.toLocaleString('vi-VN') : '—'}</td>
-                                            <td style={{ ...tdStyle, textAlign: 'right' }}>{ch.spend > 0 ? formatVND(ch.spend) : '—'}</td>
-                                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{ch.spend > 0 && ch.leads > 0 ? formatVND(ch.spend / ch.leads) : '—'}</td>
+                                            <td className="san-td" style={{ textAlign: 'center', fontWeight: 700, color: 'var(--accent)' }}>{ch.leads.toLocaleString('vi-VN')}</td>
+                                            <td className="san-td" style={{ textAlign: 'center' }}>{ch.quality > 0 ? ch.quality.toLocaleString('vi-VN') : '—'}</td>
+                                            <td className="san-td" style={{ textAlign: 'right' }}>{ch.spend > 0 ? formatVND(ch.spend) : '—'}</td>
+                                            <td className="san-td" style={{ textAlign: 'right', fontWeight: 600 }}>{ch.spend > 0 && ch.leads > 0 ? formatVND(ch.spend / ch.leads) : '—'}</td>
                                         </tr>
                                     ))}
                                     {sortedChannels.length > 1 && (
                                         <tr style={{ fontWeight: 700, borderTop: '2px solid var(--border)', background: 'rgba(0,0,0,0.02)' }}>
-                                            <td style={tdStyle}>Tổng</td>
-                                            <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700, color: 'var(--accent)' }}>{channelTotals.leads.toLocaleString('vi-VN')}</td>
-                                            <td style={{ ...tdStyle, textAlign: 'center' }}>{channelTotals.quality.toLocaleString('vi-VN')}</td>
-                                            <td style={{ ...tdStyle, textAlign: 'right' }}>{formatVND(channelTotals.spend)}</td>
-                                            <td style={{ ...tdStyle, textAlign: 'right' }}>{channelTotals.spend > 0 && channelTotals.leads > 0 ? formatVND(channelTotals.spend / channelTotals.leads) : '—'}</td>
+                                            <td className="san-td">Tổng</td>
+                                            <td className="san-td" style={{ textAlign: 'center', fontWeight: 700, color: 'var(--accent)' }}>{channelTotals.leads.toLocaleString('vi-VN')}</td>
+                                            <td className="san-td" style={{ textAlign: 'center' }}>{channelTotals.quality.toLocaleString('vi-VN')}</td>
+                                            <td className="san-td" style={{ textAlign: 'right' }}>{formatVND(channelTotals.spend)}</td>
+                                            <td className="san-td" style={{ textAlign: 'right' }}>{channelTotals.spend > 0 && channelTotals.leads > 0 ? formatVND(channelTotals.spend / channelTotals.leads) : '—'}</td>
                                         </tr>
                                     )}
                                 </tbody>
@@ -447,12 +447,4 @@ export function SanOverview() {
     );
 }
 
-const thStyle: React.CSSProperties = {
-    padding: '0.625rem 0.75rem', fontSize: 'var(--text-xs)', fontWeight: 600,
-    color: 'var(--text-muted)', textAlign: 'left', whiteSpace: 'nowrap',
-    borderBottom: '1px solid var(--border)',
-};
 
-const tdStyle: React.CSSProperties = {
-    padding: '0.5rem 0.75rem', fontSize: 'var(--text-sm)',
-};

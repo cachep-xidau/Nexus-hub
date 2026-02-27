@@ -127,8 +127,8 @@ export function SanReports() {
             {/* ═══ Header ═══ */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <div>
-                    <h1 style={{ fontWeight: 800, fontSize: 'var(--text-2xl)' }}>Báo cáo</h1>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: '0.25rem' }}>Báo cáo tổng hợp hiệu quả chiến dịch</p>
+                    <h1 className="san-page-title">Báo cáo</h1>
+                    <p className="san-page-subtitle">Báo cáo tổng hợp hiệu quả chiến dịch</p>
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                     <div style={{ display: 'flex', gap: 'var(--space-1)', background: 'var(--bg-card)', borderRadius: 'var(--radius-md)', padding: 'var(--space-1)', border: '1px solid var(--border)' }}>
@@ -150,7 +150,7 @@ export function SanReports() {
             </div>
 
             {loading ? (
-                <div style={{ textAlign: 'center', padding: 'var(--space-16)', color: 'var(--text-muted)' }}>Đang tải...</div>
+                <div className="san-loading">Đang tải...</div>
             ) : (
                 <>
                     {/* ═══ 4 Company Selector Cards ═══ */}
@@ -270,57 +270,57 @@ export function SanReports() {
                     </div>
 
                     {/* ═══ Detail Table (Sticky Columns) ═══ */}
-                    <div className="glass-panel" style={{ overflow: 'auto', padding: 0 }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>
+                    <div className="glass-panel" className="san-table-wrap">
+                        <table className="san-table">
                             <thead>
                                 <tr style={{ background: 'var(--bg-surface)' }}>
-                                    <th style={{ ...thStyle, position: 'sticky', left: 0, background: 'var(--bg-surface)', zIndex: 3, minWidth: 35 }}>#</th>
-                                    <th style={{ ...thStyle, position: 'sticky', left: 35, background: 'var(--bg-surface)', zIndex: 3, minWidth: 90 }}>KÊNH</th>
-                                    <th style={{ ...thStyle, position: 'sticky', left: 125, background: 'var(--bg-surface)', zIndex: 3, minWidth: 180, borderRight: '2px solid var(--border)' }}>CHIẾN DỊCH</th>
-                                    <th style={{ ...thStyle, textAlign: 'center', fontWeight: 700, color: 'var(--accent)' }}>TỔNG LEAD</th>
-                                    <th style={{ ...thStyle, textAlign: 'center', color: '#EF4444' }}>SPAM</th>
-                                    <th style={{ ...thStyle, textAlign: 'center' }}>TIỀM NĂNG</th>
-                                    <th style={{ ...thStyle, textAlign: 'center' }}>CHẤT LƯỢNG</th>
-                                    <th style={{ ...thStyle, textAlign: 'center' }}>ĐẶT HẸN</th>
-                                    <th style={{ ...thStyle, textAlign: 'center' }}>ĐẾN PK</th>
-                                    <th style={{ ...thStyle, textAlign: 'center', fontWeight: 700, color: 'var(--green, #10B981)' }}>CHỐT</th>
-                                    <th style={{ ...thStyle, textAlign: 'right' }}>BILL</th>
-                                    <th style={{ ...thStyle, textAlign: 'right' }}>NS THỰC TẾ</th>
+                                    <th className="san-th" style={{ position: 'sticky', left: 0, background: 'var(--bg-surface)', zIndex: 3, minWidth: 35 }}>#</th>
+                                    <th className="san-th" style={{ position: 'sticky', left: 35, background: 'var(--bg-surface)', zIndex: 3, minWidth: 90 }}>KÊNH</th>
+                                    <th className="san-th" style={{ position: 'sticky', left: 125, background: 'var(--bg-surface)', zIndex: 3, minWidth: 180, borderRight: '2px solid var(--border)' }}>CHIẾN DỊCH</th>
+                                    <th className="san-th" style={{ textAlign: 'center', fontWeight: 700, color: 'var(--accent)' }}>TỔNG LEAD</th>
+                                    <th className="san-th" style={{ textAlign: 'center', color: '#EF4444' }}>SPAM</th>
+                                    <th className="san-th" style={{ textAlign: 'center' }}>TIỀM NĂNG</th>
+                                    <th className="san-th" style={{ textAlign: 'center' }}>CHẤT LƯỢNG</th>
+                                    <th className="san-th" style={{ textAlign: 'center' }}>ĐẶT HẸN</th>
+                                    <th className="san-th" style={{ textAlign: 'center' }}>ĐẾN PK</th>
+                                    <th className="san-th" style={{ textAlign: 'center', fontWeight: 700, color: 'var(--green, #10B981)' }}>CHỐT</th>
+                                    <th className="san-th" style={{ textAlign: 'right' }}>BILL</th>
+                                    <th className="san-th" style={{ textAlign: 'right' }}>NS THỰC TẾ</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {currentRows.map((row, idx) => (
                                     <tr key={row.id + idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                                        <td style={{ ...tdStyle, position: 'sticky', left: 0, background: 'var(--bg-card)', zIndex: 2, minWidth: 35, color: 'var(--text-muted)' }}>{idx + 1}</td>
-                                        <td style={{ ...tdStyle, position: 'sticky', left: 35, background: 'var(--bg-card)', zIndex: 2, minWidth: 90 }}>
+                                        <td className="san-td" style={{ position: 'sticky', left: 0, background: 'var(--bg-card)', zIndex: 2, minWidth: 35, color: 'var(--text-muted)' }}>{idx + 1}</td>
+                                        <td className="san-td" style={{ position: 'sticky', left: 35, background: 'var(--bg-card)', zIndex: 2, minWidth: 90 }}>
                                             <span style={{ color: CHANNEL_COLORS[row.channel] || '#6B7280' }}>●</span> {CHANNEL_LABELS[row.channel] || row.channel}
                                         </td>
-                                        <td style={{ ...tdStyle, position: 'sticky', left: 125, background: 'var(--bg-card)', zIndex: 2, fontWeight: 500, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 180, borderRight: '2px solid var(--border)' }}>{row.campaignName}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700, color: 'var(--accent)' }}>{row.totalLead.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center', color: row.spam > 0 ? '#EF4444' : 'var(--text-muted)' }}>{row.spam.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center' }}>{row.potential.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center' }}>{row.quality.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center' }}>{row.booked.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center' }}>{row.arrived.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700, color: 'var(--green, #10B981)' }}>{row.closed.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'right' }}>{row.bill > 0 ? formatVND(row.bill) : '—'}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'right' }}>{row.budgetActual > 0 ? formatVND(row.budgetActual) : '—'}</td>
+                                        <td className="san-td" style={{ position: 'sticky', left: 125, background: 'var(--bg-card)', zIndex: 2, fontWeight: 500, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 180, borderRight: '2px solid var(--border)' }}>{row.campaignName}</td>
+                                        <td className="san-td" style={{ textAlign: 'center', fontWeight: 700, color: 'var(--accent)' }}>{row.totalLead.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'center', color: row.spam > 0 ? '#EF4444' : 'var(--text-muted)' }}>{row.spam.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'center' }}>{row.potential.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'center' }}>{row.quality.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'center' }}>{row.booked.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'center' }}>{row.arrived.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'center', fontWeight: 700, color: 'var(--green, #10B981)' }}>{row.closed.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'right' }}>{row.bill > 0 ? formatVND(row.bill) : '—'}</td>
+                                        <td className="san-td" style={{ textAlign: 'right' }}>{row.budgetActual > 0 ? formatVND(row.budgetActual) : '—'}</td>
                                     </tr>
                                 ))}
                                 {currentRows.length > 0 && (
                                     <tr style={{ fontWeight: 700, borderTop: '2px solid var(--border)', background: activeColor + '12' }}>
-                                        <td style={{ ...tdStyle, position: 'sticky', left: 0, background: activeColor + '12', zIndex: 2, minWidth: 35 }}></td>
-                                        <td style={{ ...tdStyle, position: 'sticky', left: 35, background: activeColor + '12', zIndex: 2, minWidth: 90 }}></td>
-                                        <td style={{ ...tdStyle, position: 'sticky', left: 125, background: activeColor + '12', zIndex: 2, fontWeight: 700, minWidth: 180, borderRight: '2px solid var(--border)' }}>TỔNG {activeLabel}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--accent)' }}>{totals.totalLead.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center', color: '#EF4444' }}>{totals.spam.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center' }}>{totals.potential.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center' }}>{totals.quality.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center' }}>{totals.booked.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center' }}>{totals.arrived.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--green, #10B981)' }}>{totals.closed.toLocaleString('vi-VN')}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'right' }}>{formatVND(totals.bill)}</td>
-                                        <td style={{ ...tdStyle, textAlign: 'right' }}>{formatVND(totals.budgetActual)}</td>
+                                        <td className="san-td" style={{ position: 'sticky', left: 0, background: activeColor + '12', zIndex: 2, minWidth: 35 }}></td>
+                                        <td className="san-td" style={{ position: 'sticky', left: 35, background: activeColor + '12', zIndex: 2, minWidth: 90 }}></td>
+                                        <td className="san-td" style={{ position: 'sticky', left: 125, background: activeColor + '12', zIndex: 2, fontWeight: 700, minWidth: 180, borderRight: '2px solid var(--border)' }}>TỔNG {activeLabel}</td>
+                                        <td className="san-td" style={{ textAlign: 'center', color: 'var(--accent)' }}>{totals.totalLead.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'center', color: '#EF4444' }}>{totals.spam.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'center' }}>{totals.potential.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'center' }}>{totals.quality.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'center' }}>{totals.booked.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'center' }}>{totals.arrived.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'center', color: 'var(--green, #10B981)' }}>{totals.closed.toLocaleString('vi-VN')}</td>
+                                        <td className="san-td" style={{ textAlign: 'right' }}>{formatVND(totals.bill)}</td>
+                                        <td className="san-td" style={{ textAlign: 'right' }}>{formatVND(totals.budgetActual)}</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -332,12 +332,4 @@ export function SanReports() {
     );
 }
 
-const thStyle: React.CSSProperties = {
-    padding: '0.625rem 0.75rem', fontSize: 'var(--text-xs)', fontWeight: 600,
-    color: 'var(--text-muted)', textAlign: 'left', whiteSpace: 'nowrap',
-    borderBottom: '1px solid var(--border)',
-};
 
-const tdStyle: React.CSSProperties = {
-    padding: '0.5rem 0.75rem', fontSize: 'var(--text-sm)',
-};
