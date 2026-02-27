@@ -228,29 +228,24 @@ export function KnowledgeHub() {
 
   // Domain + Article view (sidebar handles back navigation)
   const currentDomain = domains.find(d => d.slug === domainSlug);
+  const domainName = currentDomain?.name || domainSlug;
+  const subtitle = article
+    ? `Knowledge Hub / ${domainName} / ${article.title}`
+    : `Knowledge Hub / ${domainName}`;
+
   return (
     <>
       <Header
-        title={currentDomain?.name || domainSlug}
-        subtitle="Knowledge Hub"
+        title={domainName}
+        subtitle={subtitle}
       />
       <div className="page-content">
         {article ? (
-          <>
-            {/* Breadcrumb */}
-            <div className="knowledge-breadcrumb">
-              <button onClick={() => navigate('/knowledge')} className="knowledge-breadcrumb-link">Knowledge Hub</button>
-              <span className="knowledge-breadcrumb-sep">/</span>
-              <button onClick={() => navigate(`/knowledge/${domainSlug}`)} className="knowledge-breadcrumb-link">{currentDomain?.name || domainSlug}</button>
-              <span className="knowledge-breadcrumb-sep">/</span>
-              <span className="knowledge-breadcrumb-current">{article.title}</span>
-            </div>
-            <article className="knowledge-article" style={{ margin: '0 auto' }}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {article.content}
-              </ReactMarkdown>
-            </article>
-          </>
+          <article className="knowledge-article" style={{ margin: '0 auto' }}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+              {article.content}
+            </ReactMarkdown>
+          </article>
         ) : (
           <div className="knowledge-empty">
             <BookOpen size={48} strokeWidth={1} />
