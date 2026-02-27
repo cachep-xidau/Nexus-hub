@@ -34,6 +34,7 @@ function ProjectCard({ project, onDelete }: { project: RepoProject; onDelete: (i
                 {menuOpen && (
                     <div className="repo-card-dropdown" onClick={(e) => e.stopPropagation()}>
                         <button onClick={() => navigate(`/repo/${project.id}`)}>Open Project</button>
+                        <button onClick={() => navigate(`/repo/${project.id}?tab=settings`)}>Edit Project</button>
                         <button onClick={() => { onDelete(project.id); setMenuOpen(false); }}
                             style={{ color: 'var(--error)' }}>Delete</button>
                     </div>

@@ -34,11 +34,18 @@ export function ProjectDetail() {
     const navigate = useNavigate();
     const projectId = id!;
 
+    // Read ?tab= from URL
+    const initialTab = (() => {
+        const params = new URLSearchParams(window.location.search);
+        const t = params.get('tab');
+        return t && ['overview', 'prd', 'artifacts', 'analysis', 'connections', 'settings'].includes(t) ? t as Tab : 'overview';
+    })();
+
     const [project, setProject] = useState<RepoProject | null>(null);
     const [features, setFeatures] = useState<RepoFeature[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [activeTab, setActiveTab] = useState<Tab>('overview');
+    const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
     // Edit project
     const [editing, setEditing] = useState(false);
@@ -120,22 +127,8 @@ export function ProjectDetail() {
                     <ArrowLeft size={18} />
                 </button>
                 <div className="project-header-info">
-                    {editing ? (
-                        <div className="project-edit-row">
-                            <input className="form-input" value={editName}
-                                onChange={e => setEditName(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
-                                autoFocus />
-                            <button className="icon-btn-subtle" onClick={handleSave}><Check size={16} /></button>
-                            <button className="icon-btn-subtle" onClick={() => setEditing(false)}><X size={16} /></button>
-                        </div>
-                    ) : (
-                        <>
-                            <h1 className="project-title">{project.name}</h1>
-                            <button className="icon-btn-subtle" onClick={() => setEditing(true)}><Pencil size={14} /></button>
-                        </>
-                    )}
-                    {project.description && !editing && (
+                    <h1 className="project-title">{project.name}</h1>
+                    {project.description && (
                         <p className="project-desc">{project.description}</p>
                     )}
                 </div>
