@@ -1420,8 +1420,8 @@ body {
   background: var(--bg-card);
   color: var(--text-primary);
   border-radius: 10px;
-  width: 36px;
-  height: 36px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1431,22 +1431,22 @@ body {
 }
 
 .kanban-ai-send-btn {
-  right: 0.5rem;
-  bottom: 0.5rem;
+  right: 4px;
+  bottom: 8px;
 }
 
 .kanban-ai-slash-tip-btn {
-  left: 0.5rem;
-  bottom: 0.5rem;
+  left: 4px;
+  bottom: 8px;
   font-size: var(--text-sm);
   line-height: 1;
 }
 
 .kanban-ai-send-btn svg,
 .kanban-ai-slash-tip-btn svg {
-  width: 16px;
-  height: 16px;
-  stroke-width: 2.4;
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.1;
 }
 
 .kanban-ai-send-btn:hover:not(:disabled),
@@ -1607,6 +1607,8 @@ body {
 .detail-action-btn:hover { color: var(--text-primary); border-color: var(--text-muted); }
 .detail-action-btn.save { background: var(--accent); color: white; border-color: var(--accent); }
 .detail-action-btn.save:hover { background: var(--accent-hover); }
+.detail-action-btn.delete { color: #ef4444; border-color: rgba(239, 68, 68, 0.35); }
+.detail-action-btn.delete:hover { background: rgba(239, 68, 68, 0.12); border-color: #ef4444; color: #ef4444; }
 
 .detail-attach-btn {
   margin-left: auto;

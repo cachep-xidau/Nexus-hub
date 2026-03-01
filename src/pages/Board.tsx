@@ -9,6 +9,8 @@ import {
 import {
   getBoards,
   createCard as dbCreateCard,
+  moveCard as dbMoveCard,
+  deleteCard as dbDeleteCard,
   updateCard as dbUpdateCard,
   type DbBoard,
   getBoardAiMessages,
@@ -16,7 +18,9 @@ import {
 } from '../lib/db';
 import {
   getTrelloCredentials, getSyncedBoardIds, syncAllBoards,
-  onSyncEvent,
+  onSyncEvent, queueTrelloCardCreate, queueTrelloCardUpdate,
+  queueTrelloCardMove, queueTrelloCardDelete, pushQueuedLocalChanges,
+  getWorkspaceInboxBridgeConfig,
 } from '../lib/trello-sync';
 import { chatStream } from '../lib/ai';
 
@@ -30,6 +34,7 @@ interface Attachment {
 interface CardData {
   id: string; title: string; description: string;
   priority: string; labels: string[]; source_channel: string;
+  trello_id?: string | null;
   due_date?: string | null;
   checklists?: { name: string; items: { name: string; done: boolean }[] }[];
   links?: { url: string; name: string; type: string }[];
@@ -179,6 +184,7 @@ function toBoardData(boards: DbBoard[]): BoardData[] {
         priority: card.priority || 'medium',
         labels: card.labels || [],
         source_channel: card.source_channel || 'manual',
+        trello_id: card.trello_id || null,
         due_date: card.due_date || null,
         checklists: Array.isArray(card.checklists) ? card.checklists as CardData['checklists'] : [],
         links: Array.isArray(card.links) ? card.links as CardData['links'] : [],
@@ -226,9 +232,10 @@ function formatAssistantDisplayText(content: string): string {
 //  CARD DETAIL PANEL (Right Drawer)
 // ══════════════════════════════════════════════════════
 
-function CardDetailPanel({ card, onClose, onSave }: {
+function CardDetailPanel({ card, onClose, onSave, onDelete }: {
   card: CardData; onClose: () => void;
   onSave: (cardId: string, updates: Partial<CardData>) => void;
+  onDelete: (card: CardData) => void;
 }) {
   const [editing] = useState(true);
   const [title, setTitle] = useState(card.title);
@@ -322,6 +329,9 @@ function CardDetailPanel({ card, onClose, onSave }: {
             )}
           </div>
           <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'flex-start' }}>
+            <button className="detail-action-btn delete" onClick={() => onDelete(card)} title="Delete card">
+              <Trash2 size={16} />
+            </button>
             <button className="detail-action-btn save" onClick={handleSave} title="Save">
               <Save size={16} />
             </button>
@@ -751,6 +761,7 @@ export function Board() {
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncingNow, setSyncingNow] = useState(false);
+  const [pushingNow, setPushingNow] = useState(false);
   const [hasTrello, setHasTrello] = useState(false);
 
   // Mouse-based DnD state
@@ -812,7 +823,9 @@ export function Board() {
     (async () => {
       const creds = await getTrelloCredentials();
       const boardIds = await getSyncedBoardIds();
-      setHasTrello(!!creds && boardIds.length > 0);
+      const bridge = await getWorkspaceInboxBridgeConfig();
+      const hasBridgeTarget = !!bridge.boardId && !!bridge.listId;
+      setHasTrello(!!creds && (boardIds.length > 0 || hasBridgeTarget));
     })();
   }, []);
 
@@ -1056,6 +1069,10 @@ export function Board() {
         const toColumnId = colEl?.getAttribute('data-column-id');
 
         if (toColumnId && toColumnId !== drag.fromColumnId) {
+          const currentBoard = boards[activeBoardIndex];
+          const targetCol = currentBoard?.columns.find((c) => c.id === toColumnId);
+          const nextPos = targetCol ? targetCol.cards.length : 0;
+
           // Move card!
           setBoards((prevBoards) => {
             const newBoards = [...prevBoards];
@@ -1076,6 +1093,15 @@ export function Board() {
             newBoards[activeBoardIndex] = board;
             return newBoards;
           });
+
+          void (async () => {
+            try {
+              await dbMoveCard(drag.cardId, toColumnId, nextPos);
+              await queueTrelloCardMove(drag.cardId, toColumnId, nextPos);
+            } catch (err) {
+              console.error('Move card persist error:', err);
+            }
+          })();
         }
       }
 
@@ -1085,11 +1111,12 @@ export function Board() {
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [activeBoardIndex]);
+  }, [activeBoardIndex, boards]);
 
   const handleAddCard = async (columnId: string, title: string) => {
     try {
-      await dbCreateCard(columnId, title);
+      const cardId = await dbCreateCard(columnId, title);
+      await queueTrelloCardCreate(cardId);
       loadBoards();
     } catch {
       const newCard: CardData = { id: `c-${Date.now()}`, title, description: '', priority: 'medium', labels: [], source_channel: 'manual' };
@@ -1117,12 +1144,25 @@ export function Board() {
         links: updates.links,
         attachments: updates.attachments,
       });
+      const changedFields = Object.keys(updates).filter((k) => (updates as Record<string, unknown>)[k] !== undefined);
+      await queueTrelloCardUpdate(cardId, changedFields);
       await loadBoards();
     } catch (e) {
       console.error('Save error:', e);
     }
     // Refresh selected card
     setSelectedCard((prev) => prev ? { ...prev, ...updates } : null);
+  };
+
+  const handleDeleteCard = async (card: CardData) => {
+    try {
+      await dbDeleteCard(card.id);
+      await queueTrelloCardDelete(card.trello_id || null, card.id);
+      setSelectedCard(null);
+      await loadBoards();
+    } catch (e) {
+      console.error('Delete error:', e);
+    }
   };
 
   const handleSyncNow = async () => {
@@ -1132,6 +1172,17 @@ export function Board() {
       await loadBoards();
     } catch (e) { console.error('Sync error:', e); }
     setSyncingNow(false);
+  };
+
+  const handlePushNow = async () => {
+    setPushingNow(true);
+    try {
+      await pushQueuedLocalChanges();
+      await loadBoards();
+    } catch (e) {
+      console.error('Push error:', e);
+    }
+    setPushingNow(false);
   };
 
   if (loading) {
@@ -1190,7 +1241,7 @@ export function Board() {
 
             <div className="board-selector">
               {hasTrello && (
-                <button onClick={handleSyncNow} disabled={syncingNow}
+                <button onClick={handleSyncNow} disabled={syncingNow || pushingNow}
                   style={{
                     background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
                     padding: '0.25rem 0.5rem', cursor: syncingNow ? 'wait' : 'pointer',
@@ -1198,7 +1249,19 @@ export function Board() {
                     fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'inherit',
                   }}>
                   <RefreshCw size={12} className={syncingNow ? 'spinning' : ''} />
-                  {syncingNow ? 'Syncing...' : 'Sync'}
+                  {syncingNow ? 'Syncing...' : 'Pull from Trello'}
+                </button>
+              )}
+              {hasTrello && (
+                <button onClick={handlePushNow} disabled={syncingNow || pushingNow}
+                  style={{
+                    background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                    padding: '0.25rem 0.5rem', cursor: pushingNow ? 'wait' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontFamily: 'inherit',
+                  }}>
+                  <RefreshCw size={12} className={pushingNow ? 'spinning' : ''} />
+                  {pushingNow ? 'Pushing...' : 'Push to Trello'}
                 </button>
               )}
               {boards.length > 1 && (
@@ -1234,6 +1297,7 @@ export function Board() {
           card={selectedCard}
           onClose={() => setSelectedCard(null)}
           onSave={handleSaveCard}
+          onDelete={handleDeleteCard}
         />
       )}
 

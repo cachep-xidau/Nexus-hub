@@ -98,15 +98,6 @@ export interface NexusCard {
 
 // ── Color mapping ─────────────────────────────────
 
-const TRELLO_COLOR_TO_HEX: Record<string, string> = {
-    green: '#22c55e', yellow: '#f59e0b', orange: '#f97316',
-    red: '#ef4444', purple: '#8b5cf6', blue: '#3b82f6',
-    sky: '#0ea5e9', lime: '#84cc16', pink: '#ec4899',
-    black: '#374151', black_light: '#6b7280', green_light: '#86efac',
-    yellow_light: '#fde68a', orange_light: '#fdba74', red_light: '#fca5a5',
-    purple_light: '#c4b5fd', blue_light: '#93c5fd',
-};
-
 const TRELLO_LABEL_TO_PRIORITY: Record<string, string> = {
     red: 'urgent', orange: 'high', yellow: 'medium',
     green: 'low', black_light: 'low',
@@ -127,24 +118,44 @@ function buildUrl(path: string, key: string, token: string, params: Record<strin
     return url.toString();
 }
 
+async function trelloRequest<T>(
+    path: string,
+    key: string,
+    token: string,
+    options?: RequestInit,
+    params?: Record<string, string>
+): Promise<T> {
+    const res = await fetch(buildUrl(path, key, token, params), options);
+    if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Trello API ${res.status}: ${body.slice(0, 200)}`);
+    }
+    if (res.status === 204) return undefined as T;
+    return res.json();
+}
+
 export async function testConnection(key: string, token: string): Promise<{ ok: boolean; user?: string; error?: string }> {
     try {
         const res = await fetch(buildUrl('/members/me', key, token, { fields: 'fullName,username' }));
         if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
         const data = await res.json();
         return { ok: true, user: data.fullName || data.username };
-    } catch (e: any) {
-        return { ok: false, error: e.message };
+    } catch (e: unknown) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
 }
 
 export async function getBoards(key: string, token: string): Promise<TrelloBoard[]> {
-    const res = await fetch(buildUrl('/members/me/boards', key, token, {
-        fields: 'name,desc,url,dateLastActivity',
-        filter: 'open',
-    }));
-    if (!res.ok) throw new Error(`Trello API error: ${res.status}`);
-    return res.json();
+    return trelloRequest<TrelloBoard[]>(
+        '/members/me/boards',
+        key,
+        token,
+        undefined,
+        {
+            fields: 'name,desc,url,dateLastActivity',
+            filter: 'open',
+        }
+    );
 }
 
 export async function getBoardFull(boardId: string, key: string, token: string): Promise<TrelloBoardFull> {
@@ -172,6 +183,77 @@ export async function getBoardFull(boardId: string, key: string, token: string):
         cards: await cardsRes.json(),
         checklists: checklistsRes.ok ? await checklistsRes.json() : [],
     };
+}
+
+export interface TrelloCreateCardInput {
+    idList: string;
+    name: string;
+    desc?: string;
+    due?: string | null;
+    pos?: number | 'top' | 'bottom';
+}
+
+export async function createTrelloCard(input: TrelloCreateCardInput, key: string, token: string): Promise<TrelloCard> {
+    return trelloRequest<TrelloCard>(
+        '/cards',
+        key,
+        token,
+        { method: 'POST' },
+        {
+            idList: input.idList,
+            name: input.name,
+            desc: input.desc || '',
+            due: input.due || '',
+            pos: String(input.pos ?? 'bottom'),
+        }
+    );
+}
+
+export interface TrelloUpdateCardInput {
+    name?: string;
+    desc?: string;
+    due?: string | null;
+}
+
+export async function updateTrelloCard(cardId: string, input: TrelloUpdateCardInput, key: string, token: string): Promise<TrelloCard> {
+    const params: Record<string, string> = {};
+    if (input.name !== undefined) params.name = input.name;
+    if (input.desc !== undefined) params.desc = input.desc;
+    if (input.due !== undefined) params.due = input.due || '';
+    return trelloRequest<TrelloCard>(
+        `/cards/${cardId}`,
+        key,
+        token,
+        { method: 'PUT' },
+        params
+    );
+}
+
+export interface TrelloMoveCardInput {
+    idList: string;
+    pos?: number | 'top' | 'bottom';
+}
+
+export async function moveTrelloCard(cardId: string, input: TrelloMoveCardInput, key: string, token: string): Promise<TrelloCard> {
+    return trelloRequest<TrelloCard>(
+        `/cards/${cardId}`,
+        key,
+        token,
+        { method: 'PUT' },
+        {
+            idList: input.idList,
+            pos: String(input.pos ?? 'bottom'),
+        }
+    );
+}
+
+export async function deleteTrelloCard(cardId: string, key: string, token: string): Promise<void> {
+    const res = await fetch(buildUrl(`/cards/${cardId}`, key, token), { method: 'DELETE' });
+    if (res.status === 404) return;
+    if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Trello API ${res.status}: ${body.slice(0, 200)}`);
+    }
 }
 
 // ── Transformers ──────────────────────────────────
