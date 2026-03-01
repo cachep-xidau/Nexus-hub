@@ -1336,73 +1336,76 @@ export function Board() {
                     ))}
                   </div>
                 )}
-                <textarea
-                  className="kanban-ai-input"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  rows={2}
-                  placeholder="Ví dụ: phân tích bottleneck theo workflow tuần này và đề xuất action"
-                  onKeyDown={(e) => {
-                    if (showSlashCommands && filteredSlashCommands.length > 0) {
-                      if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        setActiveSlashIndex((prev) => (prev + 1) % filteredSlashCommands.length);
-                        return;
-                      }
-                      if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        setActiveSlashIndex((prev) => (prev - 1 + filteredSlashCommands.length) % filteredSlashCommands.length);
-                        return;
+                <div className="kanban-ai-input-shell">
+                  <textarea
+                    className="kanban-ai-input"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    rows={2}
+                    placeholder="Ví dụ: phân tích bottleneck theo workflow tuần này và đề xuất action"
+                    onKeyDown={(e) => {
+                      if (showSlashCommands && filteredSlashCommands.length > 0) {
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setActiveSlashIndex((prev) => (prev + 1) % filteredSlashCommands.length);
+                          return;
+                        }
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setActiveSlashIndex((prev) => (prev - 1 + filteredSlashCommands.length) % filteredSlashCommands.length);
+                          return;
+                        }
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          const selected = filteredSlashCommands[activeSlashIndex];
+                          if (selected) applySlashCommand(selected);
+                          return;
+                        }
                       }
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        const selected = filteredSlashCommands[activeSlashIndex];
-                        if (selected) applySlashCommand(selected);
-                        return;
+                        void handleSendAiPrompt();
                       }
-                    }
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      void handleSendAiPrompt();
-                    }
-                  }}
-                />
-                {showSlashCommands && (
-                  <div className="kanban-ai-slash-menu">
-                    {filteredSlashCommands.length === 0 ? (
-                      <div className="kanban-ai-slash-empty">Không có quick suggestion phù hợp</div>
-                    ) : (
-                      filteredSlashCommands.map((command, index) => (
-                        <button
-                          key={command.id}
-                          type="button"
-                          className={`kanban-ai-slash-item ${index === activeSlashIndex ? 'active' : ''}`}
-                          onClick={() => applySlashCommand(command)}
-                        >
-                          <div className="kanban-ai-slash-label">/{command.label}</div>
-                          <div className="kanban-ai-slash-desc">{command.description}</div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-                <button
-                  className="kanban-ai-send-btn"
-                  onClick={() => void handleSendAiPrompt()}
-                  disabled={chatLoading || !chatInput.trim() || chatInput.trim().startsWith('/')}
-                  title="Send"
-                >
-                  <Send size={16} />
-                </button>
-                <div className="kanban-ai-input-footer">
-                  <span className="kanban-ai-input-hint">Gõ "/" để mở quick suggestion. AI can make mistakes.</span>
+                    }}
+                  />
+                  {showSlashCommands && (
+                    <div className="kanban-ai-slash-menu">
+                      {filteredSlashCommands.length === 0 ? (
+                        <div className="kanban-ai-slash-empty">Không có quick suggestion phù hợp</div>
+                      ) : (
+                        filteredSlashCommands.map((command, index) => (
+                          <button
+                            key={command.id}
+                            type="button"
+                            className={`kanban-ai-slash-item ${index === activeSlashIndex ? 'active' : ''}`}
+                            onClick={() => applySlashCommand(command)}
+                          >
+                            <div className="kanban-ai-slash-label">/{command.label}</div>
+                            <div className="kanban-ai-slash-desc">{command.description}</div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
                   <button
                     type="button"
                     className="kanban-ai-slash-tip-btn"
                     onClick={() => setChatInput('/')}
+                    title="Quick suggestions"
                   >
                     /
                   </button>
+                  <button
+                    className="kanban-ai-send-btn"
+                    onClick={() => void handleSendAiPrompt()}
+                    disabled={chatLoading || !chatInput.trim() || chatInput.trim().startsWith('/')}
+                    title="Send"
+                  >
+                    <Send size={16} />
+                  </button>
+                </div>
+                <div className="kanban-ai-input-footer">
+                  <span className="kanban-ai-input-hint">Gõ "/" để mở quick suggestion. AI can make mistakes.</span>
                 </div>
               </div>
             </>

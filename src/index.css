@@ -1351,6 +1351,9 @@ body {
   gap: 0.45rem;
   align-items: stretch;
   background: transparent;
+}
+
+.kanban-ai-input-shell {
   position: relative;
 }
 
@@ -1386,7 +1389,7 @@ body {
   font-size: var(--text-sm);
   line-height: 1.6;
   min-height: 92px;
-  padding: var(--space-3) 2.7rem var(--space-3) var(--space-3);
+  padding: 0.5rem 0.5rem 2.45rem 0.5rem;
   resize: none;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -1402,7 +1405,7 @@ body {
   padding: 0 0.25rem;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
 }
 
 .kanban-ai-input-hint {
@@ -1410,37 +1413,60 @@ body {
   color: var(--text-muted);
 }
 
-.kanban-ai-send-btn {
+.kanban-ai-send-btn,
+.kanban-ai-slash-tip-btn {
   position: absolute;
-  right: calc(var(--space-4) + 0.5rem);
-  bottom: 2.25rem;
-  border: none;
-  background: var(--accent);
-  color: #fff;
-  border-radius: var(--radius-md);
-  width: 32px;
-  height: 32px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-radius: 10px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
 }
 
-.kanban-ai-send-btn:hover:not(:disabled) {
-  transform: scale(1.05);
+.kanban-ai-send-btn {
+  right: 0.5rem;
+  bottom: 0.5rem;
+}
+
+.kanban-ai-slash-tip-btn {
+  left: 0.5rem;
+  bottom: 0.5rem;
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+
+.kanban-ai-send-btn svg,
+.kanban-ai-slash-tip-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.4;
+}
+
+.kanban-ai-send-btn:hover:not(:disabled),
+.kanban-ai-slash-tip-btn:hover {
+  border-color: var(--text-secondary);
+  background: var(--text-primary);
+  color: var(--bg-sidebar);
 }
 
 .kanban-ai-send-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.42;
   cursor: default;
+  box-shadow: none;
 }
 
 .kanban-ai-slash-menu {
   position: absolute;
-  left: var(--space-4);
-  right: var(--space-4);
-  bottom: calc(100% - 2.55rem);
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 0.3rem);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-sidebar);
@@ -1483,23 +1509,6 @@ body {
   font-size: var(--text-xs);
   color: var(--text-muted);
   padding: 0.45rem 0.55rem;
-}
-
-.kanban-ai-slash-tip-btn {
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  border-radius: var(--radius-sm);
-  min-width: 24px;
-  height: 24px;
-  font-size: var(--text-sm);
-  line-height: 1;
-  cursor: pointer;
-}
-
-.kanban-ai-slash-tip-btn:hover {
-  border-color: var(--accent);
-  color: var(--text-primary);
 }
 
 @media (max-width: 860px) {
