@@ -231,6 +231,14 @@ pub fn run() {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 6,
+            description: "add_done_flag_to_cards",
+            sql: "
+                ALTER TABLE cards ADD COLUMN is_done INTEGER NOT NULL DEFAULT 0;
+            ",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

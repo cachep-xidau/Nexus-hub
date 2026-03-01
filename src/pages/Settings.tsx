@@ -7,7 +7,7 @@ import {
 } from '../lib/db';
 import { tauriFetch } from '../lib/tauri-fetch';
 import { encrypt, decrypt } from '../lib/crypto';
-import { testConnection, getBoards, type TrelloBoard } from '../lib/trello-api';
+import { testConnection, getBoards, getBoardLists, type TrelloBoard, type TrelloList } from '../lib/trello-api';
 import {
   saveTrelloCredentials, getTrelloCredentials,
   getSyncedBoardIds, saveSyncedBoardIds,
@@ -511,6 +511,8 @@ function TrelloSection() {
   const [token, setToken] = useState('');
   const [workspaceInboxBoardId, setWorkspaceInboxBoardId] = useState('');
   const [workspaceInboxListId, setWorkspaceInboxListId] = useState('');
+  const [bridgeLists, setBridgeLists] = useState<TrelloList[]>([]);
+  const [loadingBridgeLists, setLoadingBridgeLists] = useState(false);
   const [connectedUser, setConnectedUser] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [boards, setBoards] = useState<TrelloBoard[]>([]);
@@ -519,6 +521,7 @@ function TrelloSection() {
   const [autoSync, setAutoSync] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [bridgeHydrated, setBridgeHydrated] = useState(false);
 
   // Load saved credentials
   useEffect(() => {
@@ -539,6 +542,14 @@ function TrelloSection() {
       const bridge = await getWorkspaceInboxBridgeConfig();
       if (bridge.boardId) setWorkspaceInboxBoardId(bridge.boardId);
       if (bridge.listId) setWorkspaceInboxListId(bridge.listId);
+      if (creds && bridge.boardId) {
+        try {
+          const lists = await getBoardLists(bridge.boardId, creds.key, creds.token);
+          setBridgeLists(lists);
+        } catch {
+          setBridgeLists([]);
+        }
+      }
       const ls = await getSetting('trello_last_sync');
       if (ls) setLastSync(ls);
       const autoSyncSaved = await getSetting('trello_auto_sync');
@@ -547,6 +558,7 @@ function TrelloSection() {
         startAutoSync(DEFAULT_SYNC_INTERVAL_MS);
       }
       setAutoSync(shouldAutoSync || isAutoSyncRunning());
+      setBridgeHydrated(true);
     })();
   }, []);
 
@@ -561,14 +573,30 @@ function TrelloSection() {
     return () => window.clearTimeout(timer);
   }, [apiKey, token]);
 
+  useEffect(() => {
+    if (!workspaceInboxBoardId || !apiKey.trim() || !token.trim()) return;
+    const timer = window.setTimeout(async () => {
+      setLoadingBridgeLists(true);
+      try {
+        const lists = await getBoardLists(workspaceInboxBoardId, apiKey.trim(), token.trim());
+        setBridgeLists(lists);
+      } catch {
+        setBridgeLists([]);
+      }
+      setLoadingBridgeLists(false);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [workspaceInboxBoardId, apiKey, token]);
+
   // Auto-save workspace inbox bridge config
   useEffect(() => {
+    if (!bridgeHydrated) return;
     const timer = window.setTimeout(() => {
       void saveSetting('trello_workspace_inbox_board_id', workspaceInboxBoardId.trim());
       void saveSetting('trello_workspace_inbox_list_id', workspaceInboxListId.trim());
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [workspaceInboxBoardId, workspaceInboxListId]);
+  }, [workspaceInboxBoardId, workspaceInboxListId, bridgeHydrated]);
 
   // Listen to sync events
   useEffect(() => {
@@ -706,28 +734,50 @@ function TrelloSection() {
         </label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
           <div>
-            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: '0.3rem', display: 'block' }}>Bridge Board ID</label>
-            <input
-              type="text"
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: '0.3rem', display: 'block' }}>Bridge Board</label>
+            <select
               value={workspaceInboxBoardId}
-              onChange={(e) => setWorkspaceInboxBoardId(e.target.value)}
-              placeholder="Trello board id chứa inbox list"
+              onChange={(e) => {
+                setWorkspaceInboxBoardId(e.target.value);
+                setWorkspaceInboxListId('');
+              }}
               style={inputStyle}
-            />
+            >
+              <option value="">-- Select board --</option>
+              {boards.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+            {workspaceInboxBoardId && (
+              <div style={{ marginTop: 4, fontSize: 'var(--text-2xs)', color: 'var(--text-muted)' }}>
+                Board ID: <code>{workspaceInboxBoardId}</code>
+              </div>
+            )}
           </div>
           <div>
-            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: '0.3rem', display: 'block' }}>Inbox List ID</label>
-            <input
-              type="text"
+            <label style={{ fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: '0.3rem', display: 'block' }}>Inbox List</label>
+            <select
               value={workspaceInboxListId}
               onChange={(e) => setWorkspaceInboxListId(e.target.value)}
-              placeholder="Trello list id của Inbox"
               style={inputStyle}
-            />
+              disabled={!workspaceInboxBoardId || loadingBridgeLists}
+            >
+              <option value="">
+                {loadingBridgeLists ? '-- Loading lists... --' : '-- Select list --'}
+              </option>
+              {bridgeLists.map((list) => (
+                <option key={list.id} value={list.id}>{list.name}</option>
+              ))}
+            </select>
+            {workspaceInboxListId && (
+              <div style={{ marginTop: 4, fontSize: 'var(--text-2xs)', color: 'var(--text-muted)' }}>
+                List ID: <code>{workspaceInboxListId}</code>
+              </div>
+            )}
           </div>
         </div>
         <div style={{ marginTop: '0.35rem', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-          Nếu điền 2 giá trị này, hệ thống sẽ pull riêng Inbox list trong board bridge như Workspace Inbox.
+          Chọn board và list từ dropdown để app tự lấy ID. Hệ thống sẽ pull riêng list này như Workspace Inbox.
         </div>
       </div>
 

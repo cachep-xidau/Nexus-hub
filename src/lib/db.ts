@@ -1,6 +1,78 @@
 import Database from '@tauri-apps/plugin-sql';
 
 let db: Database | null = null;
+type SqlValue = string | number | null;
+type SqlRow = Record<string, SqlValue | undefined>;
+
+interface BoardRow {
+  id: string;
+  title: string;
+  description: string | null;
+  trello_id: string | null;
+  created_at: number | null;
+  updated_at: number | null;
+}
+
+interface ColumnRow {
+  id: string;
+  board_id: string;
+  title: string;
+  color: string | null;
+  position: number | null;
+  trello_id: string | null;
+}
+
+interface CardRow {
+  id: string;
+  column_id: string;
+  title: string;
+  description: string | null;
+  priority: string | null;
+  labels: string | null;
+  due_date: string | null;
+  checklists: string | null;
+  links: string | null;
+  attachments: string | null;
+  source_channel: string | null;
+  position: number | null;
+  trello_id: string | null;
+  is_done: number | null;
+}
+
+export interface DbCard extends Omit<CardRow, 'labels' | 'checklists' | 'links' | 'attachments' | 'is_done'> {
+  labels: string[];
+  checklists: unknown[];
+  links: unknown[];
+  attachments: unknown[];
+  is_done: boolean;
+}
+
+export interface DbColumn extends ColumnRow {
+  position: number | null;
+  cards: DbCard[];
+}
+
+export interface DbBoard extends BoardRow {
+  columns: DbColumn[];
+}
+
+function asString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function parseJsonArray<T = unknown>(raw: unknown): T[] {
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed as T[] : [];
+  } catch {
+    return [];
+  }
+}
 
 export async function getDb(): Promise<Database> {
   if (!db) {
@@ -10,32 +82,41 @@ export async function getDb(): Promise<Database> {
 }
 
 // ── Boards ──────────────────────────────────────────
-export async function getBoards() {
+export async function getBoards(): Promise<DbBoard[]> {
   const d = await getDb();
-  const boards = await d.select<any[]>('SELECT * FROM boards ORDER BY created_at DESC');
-  const result = [];
+  const boards = await d.select<BoardRow[]>('SELECT * FROM boards ORDER BY created_at DESC');
+  const result: DbBoard[] = [];
   for (const board of boards) {
-    const cols = await d.select<any[]>(
+    const cols = await d.select<ColumnRow[]>(
       'SELECT * FROM columns WHERE board_id = ? ORDER BY position',
       [board.id]
     );
-    const columnsWithCards = [];
+    const columnsWithCards: DbColumn[] = [];
     for (const col of cols) {
-      const cards = await d.select<any[]>(
+      const cards = await d.select<CardRow[]>(
         'SELECT * FROM cards WHERE column_id = ? ORDER BY position',
         [col.id]
       );
       columnsWithCards.push({
         ...col,
-        cards: cards.map((c: any) => ({
+        position: asNumber(col.position),
+          cards: cards.map((c) => ({
             ...c,
-            labels: JSON.parse(c.labels || '[]'),
-            checklists: JSON.parse(c.checklists || '[]'),
-            links: JSON.parse(c.links || '[]'),
+            labels: parseJsonArray<string>(c.labels),
+            checklists: parseJsonArray(c.checklists),
+            links: parseJsonArray(c.links),
+            attachments: parseJsonArray(c.attachments),
+            is_done: !!c.is_done,
           })),
       });
     }
-    result.push({ ...board, columns: columnsWithCards });
+    result.push({
+      ...board,
+      id: asString(board.id),
+      title: asString(board.title),
+      description: asString(board.description, ''),
+      columns: columnsWithCards,
+    });
   }
   return result;
 }
@@ -67,11 +148,11 @@ export async function createBoard(title: string, description = '') {
 export async function createCard(columnId: string, title: string, description = '', priority = 'medium', labels: string[] = [], sourceChannel = 'manual') {
   const d = await getDb();
   const id = crypto.randomUUID();
-  const count = await d.select<any[]>('SELECT COUNT(*) as c FROM cards WHERE column_id = ?', [columnId]);
+  const count = await d.select<SqlRow[]>('SELECT COUNT(*) as c FROM cards WHERE column_id = ?', [columnId]);
   const position = count[0]?.c || 0;
   await d.execute(
-    'INSERT INTO cards (id, column_id, title, description, priority, labels, source_channel, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, columnId, title, description, priority, JSON.stringify(labels), sourceChannel, position, Date.now()]
+    'INSERT INTO cards (id, column_id, title, description, priority, labels, source_channel, position, created_at, is_done) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, columnId, title, description, priority, JSON.stringify(labels), sourceChannel, position, Date.now(), 0]
   );
   return id;
 }
@@ -86,16 +167,39 @@ export async function deleteCard(cardId: string) {
   await d.execute('DELETE FROM cards WHERE id = ?', [cardId]);
 }
 
+export async function updateCard(cardId: string, updates: {
+  title?: string; description?: string; priority?: string;
+  labels?: string[]; due_date?: string | null;
+  checklists?: unknown[]; links?: unknown[]; attachments?: unknown[];
+  is_done?: boolean;
+}) {
+  const d = await getDb();
+  const sets: string[] = [];
+  const vals: (string | number | null)[] = [];
+  if (updates.title !== undefined) { sets.push('title = ?'); vals.push(updates.title); }
+  if (updates.description !== undefined) { sets.push('description = ?'); vals.push(updates.description); }
+  if (updates.priority !== undefined) { sets.push('priority = ?'); vals.push(updates.priority); }
+  if (updates.labels !== undefined) { sets.push('labels = ?'); vals.push(JSON.stringify(updates.labels)); }
+  if (updates.due_date !== undefined) { sets.push('due_date = ?'); vals.push(updates.due_date); }
+  if (updates.checklists !== undefined) { sets.push('checklists = ?'); vals.push(JSON.stringify(updates.checklists)); }
+  if (updates.links !== undefined) { sets.push('links = ?'); vals.push(JSON.stringify(updates.links)); }
+  if (updates.attachments !== undefined) { sets.push('attachments = ?'); vals.push(JSON.stringify(updates.attachments)); }
+  if (updates.is_done !== undefined) { sets.push('is_done = ?'); vals.push(updates.is_done ? 1 : 0); }
+  if (sets.length === 0) return;
+  vals.push(cardId);
+  await d.execute(`UPDATE cards SET ${sets.join(', ')} WHERE id = ?`, vals);
+}
+
 // ── Messages ────────────────────────────────────────
 export async function getMessages(channelType?: string, limit = 50) {
   const d = await getDb();
   if (channelType) {
-    return d.select<any[]>(
+    return d.select<SqlRow[]>(
       'SELECT * FROM messages WHERE channel_type = ? ORDER BY timestamp DESC LIMIT ?',
       [channelType, limit]
     );
   }
-  return d.select<any[]>('SELECT * FROM messages ORDER BY timestamp DESC LIMIT ?', [limit]);
+  return d.select<SqlRow[]>('SELECT * FROM messages ORDER BY timestamp DESC LIMIT ?', [limit]);
 }
 
 export async function saveMessage(msg: {
@@ -113,7 +217,7 @@ export async function saveMessage(msg: {
 // ── Channels Config ─────────────────────────────────
 export async function getChannelConfig(type: string) {
   const d = await getDb();
-  const rows = await d.select<any[]>('SELECT * FROM channels WHERE type = ? LIMIT 1', [type]);
+  const rows = await d.select<SqlRow[]>('SELECT * FROM channels WHERE type = ? LIMIT 1', [type]);
   return rows[0] || null;
 }
 
@@ -129,8 +233,8 @@ export async function saveChannelConfig(type: string, name: string, config: Reco
 // ── Seed Demo Data ──────────────────────────────────
 export async function seedDemoData() {
   const d = await getDb();
-  const existing = await d.select<any[]>('SELECT COUNT(*) as c FROM boards');
-  if (existing[0]?.c > 0) return;
+  const existing = await d.select<SqlRow[]>('SELECT COUNT(*) as c FROM boards');
+  if (Number(existing[0]?.c || 0) > 0) return;
 
   await createBoard('Project Alpha', 'Main project board');
   // Board created with empty columns: To Do, In Progress, Review, Done
@@ -155,8 +259,8 @@ export async function getSetting(key: string): Promise<string | null> {
   try {
     await ensureSettingsTable();
     const d = await getDb();
-    const rows = await d.select<any[]>('SELECT value FROM settings WHERE key = ?', [key]);
-    return rows[0]?.value || null;
+    const rows = await d.select<SqlRow[]>('SELECT value FROM settings WHERE key = ?', [key]);
+    return typeof rows[0]?.value === 'string' ? rows[0].value : null;
   } catch (e) {
     console.error('getSetting error:', e);
     return null;
@@ -185,13 +289,219 @@ export async function deleteSetting(key: string): Promise<void> {
 export async function getAllSettings(): Promise<Record<string, string>> {
   const d = await getDb();
   try {
-    const rows = await d.select<any[]>('SELECT key, value FROM settings');
+    const rows = await d.select<SqlRow[]>('SELECT key, value FROM settings');
     const result: Record<string, string> = {};
     for (const row of rows) {
-      result[row.key] = row.value;
+      if (typeof row.key === 'string' && typeof row.value === 'string') {
+        result[row.key] = row.value;
+      }
     }
     return result;
   } catch {
     return {};
   }
+}
+
+// ── Board AI Chat History ───────────────────────────
+export interface BoardAiMessage {
+  id: string;
+  board_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  metadata: string;
+  created_at: number;
+}
+
+let _boardAiTableReady = false;
+async function ensureBoardAiTable() {
+  if (_boardAiTableReady) return;
+  const d = await getDb();
+  await d.execute(`CREATE TABLE IF NOT EXISTS board_ai_messages (
+    id TEXT PRIMARY KEY,
+    board_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    metadata TEXT DEFAULT '{}',
+    created_at INTEGER NOT NULL
+  )`);
+  await d.execute(
+    'CREATE INDEX IF NOT EXISTS idx_board_ai_messages_board_created_at ON board_ai_messages(board_id, created_at)'
+  );
+  _boardAiTableReady = true;
+}
+
+export async function getBoardAiMessages(boardId: string, limit = 100): Promise<BoardAiMessage[]> {
+  await ensureBoardAiTable();
+  const d = await getDb();
+  const rows = await d.select<BoardAiMessage[]>(
+    `SELECT id, board_id, role, content, metadata, created_at
+     FROM board_ai_messages
+     WHERE board_id = ?
+     ORDER BY created_at DESC
+     LIMIT ?`,
+    [boardId, limit]
+  );
+  return [...rows].reverse();
+}
+
+export async function saveBoardAiMessage(input: {
+  board_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  metadata?: string;
+}): Promise<string> {
+  await ensureBoardAiTable();
+  const d = await getDb();
+  const id = crypto.randomUUID();
+  await d.execute(
+    'INSERT INTO board_ai_messages (id, board_id, role, content, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, input.board_id, input.role, input.content, input.metadata || '{}', Date.now()]
+  );
+  return id;
+}
+
+// ── Gmail Accounts ──────────────────────────────────
+export interface GmailAccount {
+  id: string;
+  email: string;
+  name: string;
+  photo: string;
+  client_id: string;
+  client_secret_enc: string;
+  refresh_token_enc: string;
+  access_token_enc: string;
+  token_expiry: number;
+  color: string;
+  created_at: number;
+}
+
+export interface GmailEmail {
+  id: string;
+  gmail_id: string;
+  account_id: string;
+  subject: string;
+  sender_name: string;
+  sender_email: string;
+  snippet: string;
+  body: string;
+  category: string;
+  timestamp: number;
+  is_read: boolean;
+  labels: string;
+}
+
+const ACCOUNT_COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+
+let _gmailTablesReady = false;
+async function ensureGmailTables() {
+  if (_gmailTablesReady) return;
+  const d = await getDb();
+  await d.execute(`CREATE TABLE IF NOT EXISTS gmail_accounts (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE,
+    name TEXT DEFAULT '',
+    photo TEXT DEFAULT '',
+    client_id TEXT NOT NULL,
+    client_secret_enc TEXT NOT NULL,
+    refresh_token_enc TEXT DEFAULT '',
+    access_token_enc TEXT DEFAULT '',
+    token_expiry INTEGER DEFAULT 0,
+    color TEXT DEFAULT '#3b82f6',
+    created_at INTEGER
+  )`);
+  await d.execute(`CREATE TABLE IF NOT EXISTS gmail_emails (
+    id TEXT PRIMARY KEY,
+    gmail_id TEXT,
+    account_id TEXT DEFAULT '',
+    subject TEXT,
+    sender_name TEXT,
+    sender_email TEXT,
+    snippet TEXT,
+    body TEXT,
+    category TEXT DEFAULT '',
+    timestamp INTEGER,
+    is_read INTEGER DEFAULT 0,
+    labels TEXT DEFAULT '',
+    UNIQUE(gmail_id, account_id)
+  )`);
+  _gmailTablesReady = true;
+}
+
+// ── Account CRUD ─────────────────────────────────────
+export async function getGmailAccounts(): Promise<GmailAccount[]> {
+  await ensureGmailTables();
+  const d = await getDb();
+  return d.select<GmailAccount[]>('SELECT * FROM gmail_accounts ORDER BY created_at ASC');
+}
+
+export async function getGmailAccount(id: string): Promise<GmailAccount | null> {
+  await ensureGmailTables();
+  const d = await getDb();
+  const rows = await d.select<GmailAccount[]>('SELECT * FROM gmail_accounts WHERE id = ?', [id]);
+  return rows[0] || null;
+}
+
+export async function saveGmailAccount(account: GmailAccount): Promise<void> {
+  await ensureGmailTables();
+  const d = await getDb();
+  await d.execute(
+    `INSERT OR REPLACE INTO gmail_accounts (id, email, name, photo, client_id, client_secret_enc, refresh_token_enc, access_token_enc, token_expiry, color, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [account.id, account.email, account.name, account.photo, account.client_id,
+     account.client_secret_enc, account.refresh_token_enc, account.access_token_enc,
+     account.token_expiry, account.color, account.created_at]
+  );
+}
+
+export async function deleteGmailAccount(id: string): Promise<void> {
+  await ensureGmailTables();
+  const d = await getDb();
+  await d.execute('DELETE FROM gmail_emails WHERE account_id = ?', [id]);
+  await d.execute('DELETE FROM gmail_accounts WHERE id = ?', [id]);
+}
+
+export function getNextAccountColor(existingCount: number): string {
+  return ACCOUNT_COLORS[existingCount % ACCOUNT_COLORS.length];
+}
+
+// ── Gmail Emails (multi-account) ─────────────────────
+export async function saveGmailEmails(emails: GmailEmail[]): Promise<void> {
+  await ensureGmailTables();
+  const d = await getDb();
+  for (const e of emails) {
+    await d.execute(
+      `INSERT OR REPLACE INTO gmail_emails (id, gmail_id, account_id, subject, sender_name, sender_email, snippet, body, category, timestamp, is_read, labels)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [e.id, e.gmail_id, e.account_id, e.subject, e.sender_name, e.sender_email, e.snippet, e.body, e.category, e.timestamp, e.is_read ? 1 : 0, e.labels]
+    );
+  }
+}
+
+export async function getGmailEmails(accountId?: string, limit = 100): Promise<GmailEmail[]> {
+  await ensureGmailTables();
+  const d = await getDb();
+  let rows: GmailEmail[];
+  if (accountId && accountId !== 'all') {
+    rows = await d.select<GmailEmail[]>(
+      'SELECT * FROM gmail_emails WHERE account_id = ? ORDER BY timestamp DESC LIMIT ?',
+      [accountId, limit]
+    );
+  } else {
+    rows = await d.select<GmailEmail[]>(
+      'SELECT * FROM gmail_emails ORDER BY timestamp DESC LIMIT ?',
+      [limit]
+    );
+  }
+  return rows.map(r => ({ ...r, is_read: !!r.is_read }));
+}
+
+export async function getGmailUnreadCount(accountId?: string): Promise<number> {
+  await ensureGmailTables();
+  const d = await getDb();
+  if (accountId && accountId !== 'all') {
+    const rows = await d.select<SqlRow[]>('SELECT COUNT(*) as c FROM gmail_emails WHERE is_read = 0 AND account_id = ?', [accountId]);
+    return Number(rows[0]?.c || 0);
+  }
+  const rows = await d.select<SqlRow[]>('SELECT COUNT(*) as c FROM gmail_emails WHERE is_read = 0');
+  return Number(rows[0]?.c || 0);
 }

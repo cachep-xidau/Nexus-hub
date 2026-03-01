@@ -317,8 +317,12 @@ export async function syncBoard(
     }
   }
 
-  await deleteRemovedCards(boardId, cardTrelloIds);
-  await deleteRemovedColumns(boardId, listTrelloIds);
+  // For bridge-mode (single list), do not delete other local columns/cards.
+  // This prevents accidental data loss when syncing a scoped inbox list.
+  if (!onlyListId) {
+    await deleteRemovedCards(boardId, cardTrelloIds);
+    await deleteRemovedColumns(boardId, listTrelloIds);
+  }
 
   return { cards: cardTrelloIds.length, columns: listTrelloIds.length };
 }
@@ -337,11 +341,12 @@ export async function syncAllBoards(): Promise<{ boards: number; cards: number }
 
   let totalCards = 0;
   for (const boardId of combinedBoardIds) {
+    const bridgeOnlyBoard = !!bridge.boardId && boardId === bridge.boardId && !boardIds.includes(boardId);
     const result = await syncBoard(
       boardId,
       creds.key,
       creds.token,
-      boardId === bridge.boardId ? { onlyListId: bridge.listId } : undefined
+      bridgeOnlyBoard ? { onlyListId: bridge.listId } : undefined
     );
     totalCards += result.cards;
   }
@@ -371,6 +376,7 @@ interface CardSyncContext {
   title: string;
   description: string;
   dueDate: string | null;
+  isDone: boolean;
   position: number;
   columnId: string;
   trelloListId: string | null;
@@ -443,7 +449,7 @@ async function setQueueStatus(id: string, status: QueueStatus, error?: string) {
 async function getCardSyncContext(cardId: string): Promise<CardSyncContext | null> {
   const d = await getDb();
   const rows = await d.select<SqlRow[]>(
-    `SELECT c.id, c.trello_id AS card_trello_id, c.title, c.description, c.due_date, c.position,
+    `SELECT c.id, c.trello_id AS card_trello_id, c.title, c.description, c.due_date, c.is_done, c.position,
             col.id AS column_id, col.trello_id AS list_trello_id,
             b.trello_id AS board_trello_id
      FROM cards c
@@ -461,6 +467,7 @@ async function getCardSyncContext(cardId: string): Promise<CardSyncContext | nul
     title: asString(row.title),
     description: asString(row.description),
     dueDate: asNullableString(row.due_date),
+    isDone: !!row.is_done,
     position: asNumber(row.position),
     columnId: asString(row.column_id),
     trelloListId: asNullableString(row.list_trello_id),
@@ -473,7 +480,17 @@ async function processCreate(queueItem: QueueRow, key: string, token: string): P
   const ctx = await getCardSyncContext(queueItem.card_id);
   if (!ctx || !ctx.trelloListId || !ctx.trelloBoardId) return 'skipped';
   if (ctx.trelloCardId) {
-    await updateTrelloCard(ctx.trelloCardId, { name: ctx.title, desc: ctx.description, due: ctx.dueDate }, key, token);
+    await updateTrelloCard(
+      ctx.trelloCardId,
+      {
+        name: ctx.title,
+        desc: ctx.description,
+        due: ctx.dueDate,
+        dueComplete: ctx.dueDate ? ctx.isDone : undefined,
+      },
+      key,
+      token
+    );
     return 'done';
   }
 
@@ -517,7 +534,17 @@ async function processUpdate(queueItem: QueueRow, key: string, token: string): P
     await d.execute('UPDATE cards SET trello_id = ? WHERE id = ?', [trelloCardId, ctx.id]);
   }
 
-  await updateTrelloCard(trelloCardId, { name: ctx.title, desc: ctx.description, due: ctx.dueDate }, key, token);
+  await updateTrelloCard(
+    trelloCardId,
+    {
+      name: ctx.title,
+      desc: ctx.description,
+      due: ctx.dueDate,
+      dueComplete: ctx.dueDate ? ctx.isDone : undefined,
+    },
+    key,
+    token
+  );
   return 'done';
 }
 

@@ -996,6 +996,37 @@ body {
   color: var(--text-primary);
 }
 
+.kanban-card-title.done {
+  text-decoration: line-through;
+  opacity: 0.68;
+}
+
+.kanban-card-done-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.kanban-card-done-btn:hover {
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+.kanban-card-done-btn.done {
+  background: rgba(34, 197, 94, 0.14);
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
 .kanban-card-desc {
   font-size: var(--text-xs);
   color: var(--text-muted);

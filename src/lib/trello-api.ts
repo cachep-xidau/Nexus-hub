@@ -158,6 +158,19 @@ export async function getBoards(key: string, token: string): Promise<TrelloBoard
     );
 }
 
+export async function getBoardLists(boardId: string, key: string, token: string): Promise<TrelloList[]> {
+    return trelloRequest<TrelloList[]>(
+        `/boards/${boardId}/lists`,
+        key,
+        token,
+        undefined,
+        {
+            fields: 'name,pos,closed',
+            filter: 'open',
+        }
+    );
+}
+
 export async function getBoardFull(boardId: string, key: string, token: string): Promise<TrelloBoardFull> {
     const [boardRes, listsRes, cardsRes, checklistsRes] = await Promise.all([
         fetch(buildUrl(`/boards/${boardId}`, key, token, { fields: 'name,desc,url,dateLastActivity' })),
@@ -213,6 +226,7 @@ export interface TrelloUpdateCardInput {
     name?: string;
     desc?: string;
     due?: string | null;
+    dueComplete?: boolean;
 }
 
 export async function updateTrelloCard(cardId: string, input: TrelloUpdateCardInput, key: string, token: string): Promise<TrelloCard> {
@@ -220,6 +234,7 @@ export async function updateTrelloCard(cardId: string, input: TrelloUpdateCardIn
     if (input.name !== undefined) params.name = input.name;
     if (input.desc !== undefined) params.desc = input.desc;
     if (input.due !== undefined) params.due = input.due || '';
+    if (input.dueComplete !== undefined) params.dueComplete = input.dueComplete ? 'true' : 'false';
     return trelloRequest<TrelloCard>(
         `/cards/${cardId}`,
         key,

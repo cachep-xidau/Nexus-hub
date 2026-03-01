@@ -4,7 +4,7 @@ import { openExternal } from '../lib/open-url';
 import {
   Plus, LayoutGrid, Clock, CheckSquare, Link as LinkIcon,
   RefreshCw, X, FileText, AlignLeft, ExternalLink, GripVertical,
-  Paperclip, Upload, Trash2, Save, Send, Bot, User,
+  Paperclip, Upload, Trash2, Save, Send, Bot, User, Check,
 } from 'lucide-react';
 import {
   getBoards,
@@ -35,6 +35,7 @@ interface CardData {
   id: string; title: string; description: string;
   priority: string; labels: string[]; source_channel: string;
   trello_id?: string | null;
+  is_done?: boolean;
   due_date?: string | null;
   checklists?: { name: string; items: { name: string; done: boolean }[] }[];
   links?: { url: string; name: string; type: string }[];
@@ -185,6 +186,7 @@ function toBoardData(boards: DbBoard[]): BoardData[] {
         labels: card.labels || [],
         source_channel: card.source_channel || 'manual',
         trello_id: card.trello_id || null,
+        is_done: card.is_done || false,
         due_date: card.due_date || null,
         checklists: Array.isArray(card.checklists) ? card.checklists as CardData['checklists'] : [],
         links: Array.isArray(card.links) ? card.links as CardData['links'] : [],
@@ -512,11 +514,12 @@ function CardDetailPanel({ card, onClose, onSave, onDelete }: {
 //  CARD (with mouse-based drag via grip handle)
 // ══════════════════════════════════════════════════════
 
-function KanbanCard({ card, columnId, onSelect, onGripMouseDown }: {
+function KanbanCard({ card, columnId, onSelect, onGripMouseDown, onToggleDone }: {
   card: CardData;
   columnId: string;
   onSelect: (card: CardData) => void;
   onGripMouseDown: (e: React.MouseEvent, cardId: string, columnId: string) => void;
+  onToggleDone: (card: CardData) => void;
 }) {
   const totalItems = card.checklists?.reduce((s, cl) => s + cl.items.length, 0) || 0;
   const doneItems = card.checklists?.reduce((s, cl) => s + cl.items.filter(i => i.done).length, 0) || 0;
@@ -553,7 +556,22 @@ function KanbanCard({ card, columnId, onSelect, onGripMouseDown }: {
 
         {/* Clickable card body */}
         <div style={{ flex: 1, cursor: 'pointer', minWidth: 0 }} onClick={() => onSelect(card)}>
-          <div className="kanban-card-title">{card.title}</div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+            <div className={`kanban-card-title ${card.is_done ? 'done' : ''}`}>{card.title}</div>
+            <button
+              type="button"
+              className={`kanban-card-done-btn ${card.is_done ? 'done' : ''}`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleDone(card);
+              }}
+              title={card.is_done ? 'Mark not done' : 'Mark done'}
+              aria-label={card.is_done ? 'Mark not done' : 'Mark done'}
+            >
+              <Check size={12} />
+            </button>
+          </div>
 
           {card.description && (
             <div className="kanban-card-desc">
@@ -699,11 +717,12 @@ function InlineAddCard({ columnId, onSubmit, onCancel }: {
 //  COLUMN
 // ══════════════════════════════════════════════════════
 
-function KanbanColumn({ column, onAddCard, onSelectCard, onGripMouseDown, isDragOver }: {
+function KanbanColumn({ column, onAddCard, onSelectCard, onGripMouseDown, onToggleDone, isDragOver }: {
   column: ColumnData;
   onAddCard: (colId: string, title: string) => void;
   onSelectCard: (card: CardData) => void;
   onGripMouseDown: (e: React.MouseEvent, cardId: string, columnId: string) => void;
+  onToggleDone: (card: CardData) => void;
   isDragOver: boolean;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -729,6 +748,7 @@ function KanbanColumn({ column, onAddCard, onSelectCard, onGripMouseDown, isDrag
             columnId={column.id}
             onSelect={onSelectCard}
             onGripMouseDown={onGripMouseDown}
+            onToggleDone={onToggleDone}
           />
         ))}
 
@@ -766,7 +786,7 @@ export function Board() {
 
   // Mouse-based DnD state
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
-  const [chatMinimized, setChatMinimized] = useState(false);
+  const [chatMinimized, setChatMinimized] = useState(true);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<BoardAiChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -804,6 +824,7 @@ export function Board() {
     startX: number;
     startY: number;
   } | null>(null);
+  const chatPanelRef = useRef<HTMLDivElement | null>(null);
 
   const columns = useMemo(() => boards[activeBoardIndex]?.columns ?? [], [boards, activeBoardIndex]);
   const activeBoard = boards[activeBoardIndex];
@@ -880,6 +901,18 @@ export function Board() {
       setActiveSlashIndex(0);
     }
   }, [showSlashCommands, activeSlashIndex, filteredSlashCommands.length]);
+
+  useEffect(() => {
+    if (chatMinimized) return;
+    const onDocMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (chatPanelRef.current?.contains(target)) return;
+      setChatMinimized(true);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [chatMinimized]);
 
   async function loadBoards() {
     try {
@@ -1165,6 +1198,29 @@ export function Board() {
     }
   };
 
+  const handleToggleDone = async (card: CardData) => {
+    const nextDone = !card.is_done;
+    setBoards((prevBoards) => prevBoards.map((board, bIdx) => {
+      if (bIdx !== activeBoardIndex) return board;
+      return {
+        ...board,
+        columns: board.columns.map((col) => ({
+          ...col,
+          cards: col.cards.map((c) => (c.id === card.id ? { ...c, is_done: nextDone } : c)),
+        })),
+      };
+    }));
+    if (selectedCard?.id === card.id) {
+      setSelectedCard((prev) => (prev ? { ...prev, is_done: nextDone } : prev));
+    }
+    try {
+      await dbUpdateCard(card.id, { is_done: nextDone });
+      await queueTrelloCardUpdate(card.id, ['is_done']);
+    } catch (e) {
+      console.error('Toggle done error:', e);
+    }
+  };
+
   const handleSyncNow = async () => {
     setSyncingNow(true);
     try {
@@ -1284,6 +1340,7 @@ export function Board() {
                 onAddCard={handleAddCard}
                 onSelectCard={setSelectedCard}
                 onGripMouseDown={handleGripMouseDown}
+                onToggleDone={handleToggleDone}
                 isDragOver={dragOverColId === col.id}
               />
             ))}
@@ -1313,7 +1370,7 @@ export function Board() {
             <Bot size={18} />
           </button>
         ) : (
-          <div className="kanban-ai-panel">
+          <div className="kanban-ai-panel" ref={chatPanelRef}>
             <div
               className="kanban-ai-header"
               onClick={() => setChatMinimized(true)}
