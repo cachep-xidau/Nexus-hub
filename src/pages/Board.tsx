@@ -1,25 +1,31 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Header } from '../components/layout/Header';
-import {
-  DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor,
-  useSensor, useSensors,
-  type DragStartEvent, type DragOverEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { openExternal } from '../lib/open-url';
 import {
   Plus, LayoutGrid, Clock, CheckSquare, Link as LinkIcon,
-  RefreshCw, X, FileText, Tag, AlignLeft, ExternalLink, GripVertical,
+  RefreshCw, X, FileText, AlignLeft, ExternalLink, GripVertical,
+  Paperclip, Upload, Trash2, Save, Send, Bot, User,
 } from 'lucide-react';
-import { getBoards, createCard as dbCreateCard } from '../lib/db';
+import {
+  getBoards,
+  createCard as dbCreateCard,
+  updateCard as dbUpdateCard,
+  type DbBoard,
+  getBoardAiMessages,
+  saveBoardAiMessage,
+} from '../lib/db';
 import {
   getTrelloCredentials, getSyncedBoardIds, syncAllBoards,
   onSyncEvent,
 } from '../lib/trello-sync';
+import { chatStream } from '../lib/ai';
 
 // ── Types ────────────────────────────────────────────
+
+interface Attachment {
+  id: string; name: string; type: string; size: number;
+  dataUrl?: string; addedAt: number;
+}
 
 interface CardData {
   id: string; title: string; description: string;
@@ -27,10 +33,37 @@ interface CardData {
   due_date?: string | null;
   checklists?: { name: string; items: { name: string; done: boolean }[] }[];
   links?: { url: string; name: string; type: string }[];
+  attachments?: Attachment[];
 }
 
 interface ColumnData { id: string; title: string; color: string; cards: CardData[]; }
 interface BoardData { id: string; title: string; columns: ColumnData[]; trello_id?: string; }
+type BoardAiChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: number;
+  actions?: BoardAiAction[];
+};
+
+type BoardAiActionType = 'move_card' | 'set_priority' | 'add_label' | 'set_due_date';
+type BoardAiAction = {
+  id: string;
+  type: BoardAiActionType;
+  label: string;
+  reason?: string;
+  cardId: string;
+  toColumnId?: string;
+  priority?: string;
+  value?: string;
+  dueDate?: string;
+};
+type SlashCommand = {
+  id: string;
+  label: string;
+  description: string;
+  prompt: string;
+};
 
 // ── Constants ────────────────────────────────────────
 
@@ -51,115 +84,362 @@ const LINK_META: Record<string, { icon: string; color: string; bg: string }> = {
   link: { icon: '🔗', color: '#6b7280', bg: 'rgba(107,114,128,0.08)' },
 };
 
+function normalizePriority(input?: string): string {
+  const value = (input || '').toLowerCase().trim();
+  if (value === 'urgent' || value === 'high' || value === 'medium' || value === 'low') return value;
+  return 'medium';
+}
+
+function getColumnWorkflowSnapshot(columns: ColumnData[]) {
+  return columns.map((col) => ({
+    id: col.id,
+    title: col.title,
+    count: col.cards.length,
+    cards: col.cards.slice(0, 20).map((card) => ({
+      id: card.id,
+      title: card.title,
+      priority: card.priority,
+      due_date: card.due_date || null,
+      labels: card.labels,
+      has_description: !!card.description,
+    })),
+  }));
+}
+
+function buildBoardAiPrompt(boardTitle: string, columns: ColumnData[], userRequest: string): string {
+  const snapshot = {
+    board_title: boardTitle,
+    generated_at: new Date().toISOString(),
+    workflow: getColumnWorkflowSnapshot(columns),
+  };
+  return [
+    'You are an AI workflow analyst for a Kanban board.',
+    'Focus insights by COLUMN / WORKFLOW bottlenecks, not by assignee.',
+    'Return concise actionable insights in Vietnamese.',
+    'Then provide apply-ready actions in a JSON code block.',
+    'Rules for action JSON:',
+    '- Use shape: {"actions":[{...}]}',
+    '- Allowed action.type: move_card | set_priority | add_label | set_due_date',
+    '- Every action MUST include: id, type, label, cardId',
+    '- move_card requires toColumnId',
+    '- set_priority requires priority (urgent|high|medium|low)',
+    '- add_label requires value',
+    '- set_due_date requires dueDate in YYYY-MM-DD',
+    '- Use only existing cardId/columnId from the snapshot',
+    '',
+    `Board snapshot JSON:\n${JSON.stringify(snapshot, null, 2)}`,
+    '',
+    `User request: ${userRequest}`,
+  ].join('\n');
+}
+
+function parseActionsFromAssistant(content: string): BoardAiAction[] {
+  const match = content.match(/```json\s*([\s\S]*?)```/i);
+  if (!match) return [];
+  try {
+    const parsed = JSON.parse(match[1]) as { actions?: BoardAiAction[] };
+    if (!Array.isArray(parsed.actions)) return [];
+    return parsed.actions
+      .filter((a) => !!a && typeof a === 'object')
+      .map((a, idx) => ({
+        id: a.id || `ai-action-${idx + 1}`,
+        type: a.type,
+        label: a.label || `Action ${idx + 1}`,
+        reason: a.reason,
+        cardId: a.cardId,
+        toColumnId: a.toColumnId,
+        priority: normalizePriority(a.priority),
+        value: a.value,
+        dueDate: a.dueDate,
+      }))
+      .filter((a) =>
+        (a.type === 'move_card' && !!a.toColumnId && !!a.cardId) ||
+        (a.type === 'set_priority' && !!a.priority && !!a.cardId) ||
+        (a.type === 'add_label' && !!a.value && !!a.cardId) ||
+        (a.type === 'set_due_date' && !!a.dueDate && !!a.cardId)
+      );
+  } catch {
+    return [];
+  }
+}
+
+function toBoardData(boards: DbBoard[]): BoardData[] {
+  return boards.map((board) => ({
+    id: board.id,
+    title: board.title,
+    trello_id: typeof board.trello_id === 'string' ? board.trello_id : undefined,
+    columns: board.columns.map((col) => ({
+      id: col.id,
+      title: col.title,
+      color: col.color || '#3b82f6',
+      cards: col.cards.map((card) => ({
+        id: card.id,
+        title: card.title,
+        description: card.description || '',
+        priority: card.priority || 'medium',
+        labels: card.labels || [],
+        source_channel: card.source_channel || 'manual',
+        due_date: card.due_date || null,
+        checklists: Array.isArray(card.checklists) ? card.checklists as CardData['checklists'] : [],
+        links: Array.isArray(card.links) ? card.links as CardData['links'] : [],
+        attachments: Array.isArray(card.attachments) ? card.attachments as Attachment[] : [],
+      })),
+    })),
+  }));
+}
+
+function formatAssistantDisplayText(content: string): string {
+  const withoutCodeBlocks = content
+    .replace(/```json[\s\S]*?```/gi, '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/\r\n/g, '\n');
+
+  let listIndex = 0;
+  const lines = withoutCodeBlocks.split('\n').map((line) => {
+    const noHeading = line.replace(/^\s*#{1,6}\s+/, '');
+    const trimmed = noHeading.trim();
+    if (!trimmed) return '';
+
+    const bulletMatch = trimmed.match(/^[-*•]\s+(.+)$/);
+    const orderedMatch = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    if (bulletMatch) {
+      listIndex += 1;
+      return `${listIndex}. ${bulletMatch[1]}`;
+    }
+    if (orderedMatch) {
+      listIndex += 1;
+      return `${listIndex}. ${orderedMatch[1]}`;
+    }
+    return noHeading;
+  });
+
+  return lines
+    .join('\n')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\t/g, '  ')
+    .trim();
+}
+
 // ══════════════════════════════════════════════════════
 //  CARD DETAIL PANEL (Right Drawer)
 // ══════════════════════════════════════════════════════
 
-function CardDetailPanel({ card, onClose }: { card: CardData; onClose: () => void }) {
-  // Close on ESC
+function CardDetailPanel({ card, onClose, onSave }: {
+  card: CardData; onClose: () => void;
+  onSave: (cardId: string, updates: Partial<CardData>) => void;
+}) {
+  const [editing] = useState(true);
+  const [title, setTitle] = useState(card.title);
+  const [description, setDescription] = useState(card.description);
+  const [priority, setPriority] = useState(card.priority);
+  const [dueDate, setDueDate] = useState(card.due_date || '');
+  const [labelsText, setLabelsText] = useState(card.labels.join(', '));
+  const [attachments, setAttachments] = useState<Attachment[]>(card.attachments || []);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
+  const handleSave = () => {
+    const updates: Partial<CardData> = {
+      title: title.trim() || card.title,
+      description,
+      priority,
+      due_date: dueDate || null,
+      labels: labelsText.split(',').map(l => l.trim()).filter(Boolean),
+      attachments,
+    };
+    onSave(card.id, updates);
+  };
+
+  const handleFileAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const att: Attachment = {
+          id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          dataUrl: reader.result as string,
+          addedAt: Date.now(),
+        };
+        setAttachments(prev => [...prev, att]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const removeAttachment = (attId: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== attId));
+  };
+
   const isOverdue = card.due_date ? new Date(card.due_date) < new Date() : false;
+  const isImage = (type: string) => type.startsWith('image/');
+  const formatSize = (bytes: number) => bytes < 1024 ? bytes + ' B' : bytes < 1048576 ? (bytes / 1024).toFixed(1) + ' KB' : (bytes / 1048576).toFixed(1) + ' MB';
 
   return (
     <>
-      {/* Backdrop */}
       <div className="card-drawer-backdrop" onClick={onClose} />
-
-      {/* Drawer */}
       <div className="card-drawer">
         {/* Header */}
         <div className="card-drawer-header">
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
-              {/* Priority badge */}
-              <span style={{
-                fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4,
-                background: PRIORITY_COLORS[card.priority] || PRIORITY_COLORS.medium,
-                color: '#fff', textTransform: 'uppercase', letterSpacing: '0.04em',
-              }}>
-                {PRIORITY_LABELS[card.priority] || card.priority}
-              </span>
-              {/* Source badge */}
-              {card.source_channel === 'trello' && (
-                <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: '#0079BF', color: '#fff' }}>
-                  TRELLO
+              {editing ? (
+                <select value={priority} onChange={e => setPriority(e.target.value)}
+                  className="detail-select" style={{ borderColor: PRIORITY_COLORS[priority] }}>
+                  {Object.entries(PRIORITY_LABELS).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+              ) : (
+                <span style={{
+                  fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                  background: PRIORITY_COLORS[card.priority] || PRIORITY_COLORS.medium,
+                  color: '#fff', textTransform: 'uppercase', letterSpacing: '0.04em',
+                }}>
+                  {PRIORITY_LABELS[card.priority] || card.priority}
                 </span>
               )}
+              {card.source_channel === 'trello' && (
+                <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: '#0079BF', color: '#fff' }}>TRELLO</span>
+              )}
             </div>
-            <h2 style={{ fontSize: '1rem', fontWeight: 700, lineHeight: 1.35, margin: 0 }}>
-              {card.title}
-            </h2>
+            {editing ? (
+              <input className="detail-title-input" value={title} onChange={e => setTitle(e.target.value)}
+                placeholder="Card title..." autoFocus />
+            ) : (
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, lineHeight: 1.35, margin: 0 }}>{card.title}</h2>
+            )}
           </div>
-          <button className="card-drawer-close" onClick={onClose}>
-            <X size={18} />
-          </button>
+          <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'flex-start' }}>
+            <button className="detail-action-btn save" onClick={handleSave} title="Save">
+              <Save size={16} />
+            </button>
+            <button className="card-drawer-close" onClick={onClose}><X size={18} /></button>
+          </div>
         </div>
 
         {/* Body */}
         <div className="card-drawer-body">
-
           {/* Description */}
-          {card.description && (
-            <div className="drawer-section">
-              <div className="drawer-section-title">
-                <AlignLeft size={13} /> Description
-              </div>
-              <div className="drawer-description">{card.description}</div>
-            </div>
-          )}
-
-          {/* Meta Grid */}
           <div className="drawer-section">
-            <div className="drawer-section-title">
-              <FileText size={13} /> Details
-            </div>
+            <div className="drawer-section-title"><AlignLeft size={13} /> Description</div>
+            {editing ? (
+              <textarea className="detail-textarea" value={description}
+                onChange={e => setDescription(e.target.value)}
+                placeholder="Add a description..." rows={4} />
+            ) : (
+              card.description ? (
+                <div className="drawer-description">{card.description}</div>
+              ) : (
+                <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontStyle: 'italic' }}>No description</div>
+              )
+            )}
+          </div>
+
+          {/* Due Date & Labels */}
+          <div className="drawer-section">
+            <div className="drawer-section-title"><FileText size={13} /> Details</div>
             <div className="drawer-meta-grid">
-              {card.due_date && (
-                <div className="drawer-meta-item" style={{
-                  borderLeft: `3px solid ${isOverdue ? '#ef4444' : '#3b82f6'}`,
-                }}>
-                  <span className="drawer-meta-label">Due Date</span>
+              <div className="drawer-meta-item">
+                <span className="drawer-meta-label">Due Date</span>
+                {editing ? (
+                  <input type="date" className="detail-date-input" value={dueDate || ''}
+                    onChange={e => setDueDate(e.target.value)} />
+                ) : (
                   <span className="drawer-meta-value" style={{ color: isOverdue ? '#ef4444' : 'var(--text-primary)' }}>
-                    {new Date(card.due_date).toLocaleDateString('vi-VN', {
-                      day: '2-digit', month: '2-digit', year: 'numeric',
-                    })}
+                    {card.due_date ? new Date(card.due_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
                     {isOverdue && <span style={{ fontSize: '0.65rem', marginLeft: 4, fontWeight: 400 }}>⚠ Quá hạn</span>}
                   </span>
-                </div>
-              )}
+                )}
+              </div>
               <div className="drawer-meta-item">
                 <span className="drawer-meta-label">Priority</span>
                 <span className="drawer-meta-value" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{
-                    width: 8, height: 8, borderRadius: '50%',
-                    background: PRIORITY_COLORS[card.priority] || PRIORITY_COLORS.medium,
-                    display: 'inline-block',
-                  }} />
-                  {PRIORITY_LABELS[card.priority] || card.priority}
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: PRIORITY_COLORS[editing ? priority : card.priority] || PRIORITY_COLORS.medium, display: 'inline-block' }} />
+                  {PRIORITY_LABELS[editing ? priority : card.priority] || (editing ? priority : card.priority)}
                 </span>
               </div>
               <div className="drawer-meta-item">
                 <span className="drawer-meta-label">Source</span>
-                <span className="drawer-meta-value" style={{ textTransform: 'capitalize' }}>
-                  {card.source_channel}
-                </span>
+                <span className="drawer-meta-value" style={{ textTransform: 'capitalize' }}>{card.source_channel}</span>
               </div>
-              {card.labels.length > 0 && (
-                <div className="drawer-meta-item" style={{ gridColumn: card.due_date ? 'span 1' : 'span 2' }}>
-                  <span className="drawer-meta-label">Labels</span>
-                  <div className="drawer-labels" style={{ marginTop: 2 }}>
-                    {card.labels.map((l) => (
-                      <span key={l} className="label-tag" style={{ fontSize: '0.65rem' }}>{l}</span>
-                    ))}
-                  </div>
-                </div>
+              <div className="drawer-meta-item">
+                <span className="drawer-meta-label">Labels</span>
+                {editing ? (
+                  <input className="detail-label-input" value={labelsText}
+                    onChange={e => setLabelsText(e.target.value)}
+                    placeholder="bug, urgent, frontend" />
+                ) : (
+                  card.labels.length > 0 ? (
+                    <div className="drawer-labels" style={{ marginTop: 2 }}>
+                      {card.labels.map(l => <span key={l} className="label-tag" style={{ fontSize: '0.65rem' }}>{l}</span>)}
+                    </div>
+                  ) : <span className="drawer-meta-value">—</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Attachments */}
+          <div className="drawer-section">
+            <div className="drawer-section-title">
+              <Paperclip size={13} /> Attachments ({attachments.length})
+              {editing && (
+                <button className="detail-attach-btn" onClick={() => fileInputRef.current?.click()}>
+                  <Upload size={12} /> Add file
+                </button>
               )}
             </div>
+            <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }}
+              onChange={handleFileAdd} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.md" />
+
+            {attachments.length > 0 ? (
+              <div className="attachment-grid">
+                {attachments.map(att => (
+                  <div key={att.id} className="attachment-card">
+                    {isImage(att.type) && att.dataUrl ? (
+                      <div className="attachment-preview">
+                        <img src={att.dataUrl} alt={att.name} />
+                      </div>
+                    ) : (
+                      <div className="attachment-preview attachment-file">
+                        <FileText size={24} />
+                        <span>{att.name.split('.').pop()?.toUpperCase()}</span>
+                      </div>
+                    )}
+                    <div className="attachment-info">
+                      <span className="attachment-name" title={att.name}>{att.name}</span>
+                      <span className="attachment-size">{formatSize(att.size)}</span>
+                    </div>
+                    {editing && (
+                      <button className="attachment-remove" onClick={() => removeAttachment(att.id)} title="Remove">
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              !editing && <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontStyle: 'italic' }}>No attachments</div>
+            )}
+
+            {editing && (
+              <div className="drop-zone" onClick={() => fileInputRef.current?.click()}>
+                <Upload size={20} />
+                <span>Click to add files or drag images, documents here</span>
+              </div>
+            )}
           </div>
 
           {/* Checklists */}
@@ -176,17 +456,10 @@ function CardDetailPanel({ card, onClose }: { card: CardData; onClose: () => voi
                   <div key={ci} className="drawer-checklist">
                     <div className="drawer-checklist-name">
                       <span>{cl.name}</span>
-                      <span style={{ fontSize: '0.7rem', fontWeight: 600, color: pct === 100 ? '#22c55e' : 'var(--text-muted)' }}>
-                        {done}/{total}
-                      </span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 600, color: pct === 100 ? '#22c55e' : 'var(--text-muted)' }}>{done}/{total}</span>
                     </div>
                     <div className="drawer-checklist-progress">
-                      <div className="drawer-checklist-progress-fill"
-                        style={{
-                          width: `${pct}%`,
-                          background: pct === 100 ? '#22c55e' : 'var(--accent)',
-                        }}
-                      />
+                      <div className="drawer-checklist-progress-fill" style={{ width: `${pct}%`, background: pct === 100 ? '#22c55e' : 'var(--accent)' }} />
                     </div>
                     {cl.items.map((item, ii) => (
                       <div key={ii} className={`drawer-check-item ${item.done ? 'done' : ''}`}>
@@ -203,33 +476,20 @@ function CardDetailPanel({ card, onClose }: { card: CardData; onClose: () => voi
           {/* Links */}
           {card.links && card.links.length > 0 && (
             <div className="drawer-section">
-              <div className="drawer-section-title">
-                <LinkIcon size={13} /> Links ({card.links.length})
-              </div>
+              <div className="drawer-section-title"><LinkIcon size={13} /> Links ({card.links.length})</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 {card.links.map((link, i) => {
                   const meta = LINK_META[link.type] || LINK_META.link;
                   return (
-                    <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="drawer-link-item">
-                      <div className="drawer-link-icon" style={{ background: meta.bg }}>
-                        {meta.icon}
-                      </div>
-                      <div className="drawer-link-text" title={link.name}>
-                        {link.name || link.url}
-                      </div>
+                    <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="drawer-link-item"
+                      onClick={e => { e.preventDefault(); openExternal(link.url); }}>
+                      <div className="drawer-link-icon" style={{ background: meta.bg }}>{meta.icon}</div>
+                      <div className="drawer-link-text" title={link.name}>{link.name || link.url}</div>
                       <ExternalLink size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                     </a>
                   );
                 })}
               </div>
-            </div>
-          )}
-
-          {/* Empty state */}
-          {!card.description && (!card.checklists || card.checklists.length === 0) && (!card.links || card.links.length === 0) && (
-            <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
-              <FileText size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
-              <div style={{ fontSize: 'var(--text-sm)' }}>No details available</div>
             </div>
           )}
         </div>
@@ -239,42 +499,49 @@ function CardDetailPanel({ card, onClose }: { card: CardData; onClose: () => voi
 }
 
 // ══════════════════════════════════════════════════════
-//  SORTABLE CARD
+//  CARD (with mouse-based drag via grip handle)
 // ══════════════════════════════════════════════════════
 
-function SortableCard({ card, onSelect }: { card: CardData; onSelect: (card: CardData) => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform), transition,
-    opacity: isDragging ? 0.3 : 1,
-  };
-
+function KanbanCard({ card, columnId, onSelect, onGripMouseDown }: {
+  card: CardData;
+  columnId: string;
+  onSelect: (card: CardData) => void;
+  onGripMouseDown: (e: React.MouseEvent, cardId: string, columnId: string) => void;
+}) {
   const totalItems = card.checklists?.reduce((s, cl) => s + cl.items.length, 0) || 0;
   const doneItems = card.checklists?.reduce((s, cl) => s + cl.items.filter(i => i.done).length, 0) || 0;
   const isOverdue = card.due_date ? new Date(card.due_date) < new Date() : false;
+  const handleCardMouseDown = (e: React.MouseEvent) => {
+    // Keep native behavior for interactive controls inside the card
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a, input, textarea, select, [role="button"]')) return;
+    if (e.button !== 0) return;
+    onGripMouseDown(e, card.id, columnId);
+  };
 
   return (
-    <div ref={setNodeRef} style={style} className={`kanban-card ${isDragging ? 'dragging' : ''}`}>
-      {/* Priority strip */}
-      <div className="kanban-card-priority-strip"
-        style={{ background: PRIORITY_COLORS[card.priority] || PRIORITY_COLORS.medium }} />
-
+    <div
+      className="kanban-card"
+      data-card-id={card.id}
+      data-column-id={columnId}
+      onMouseDown={handleCardMouseDown}
+    >
       {/* Card layout: drag handle + clickable body */}
       <div style={{ display: 'flex', gap: '0.4rem' }}>
-        {/* Drag handle — ONLY this element has dnd-kit listeners */}
+        {/* Drag handle — mousedown triggers Board-level drag */}
         <div
-          {...attributes} {...listeners}
+          onMouseDown={(e) => onGripMouseDown(e, card.id, columnId)}
           style={{
             cursor: 'grab', padding: '2px 0', color: 'var(--text-muted)',
             opacity: 0.35, flexShrink: 0, display: 'flex', alignItems: 'flex-start',
-            marginTop: '1px',
+            marginTop: '1px', userSelect: 'none',
           }}
           title="Drag to reorder"
         >
           <GripVertical size={14} />
         </div>
 
-        {/* Clickable card body — normal onClick, no dnd-kit interference */}
+        {/* Clickable card body */}
         <div style={{ flex: 1, cursor: 'pointer', minWidth: 0 }} onClick={() => onSelect(card)}>
           <div className="kanban-card-title">{card.title}</div>
 
@@ -321,7 +588,7 @@ function SortableCard({ card, onSelect }: { card: CardData; onSelect: (card: Car
                 const meta = LINK_META[link.type] || LINK_META.link;
                 return (
                   <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
+                    onClick={e => { e.preventDefault(); e.stopPropagation(); openExternal(link.url); }}
                     title={link.name}
                     style={{
                       fontSize: '0.6rem', padding: '1px 5px', borderRadius: 3,
@@ -365,16 +632,78 @@ function SortableCard({ card, onSelect }: { card: CardData; onSelect: (card: Car
 }
 
 // ══════════════════════════════════════════════════════
+//  INLINE ADD CARD
+// ══════════════════════════════════════════════════════
+
+function InlineAddCard({ columnId, onSubmit, onCancel }: {
+  columnId: string;
+  onSubmit: (columnId: string, title: string) => void;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  const handleSubmit = () => {
+    if (!title.trim()) return;
+    onSubmit(columnId, title.trim());
+    setTitle('');
+    textareaRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+    if (e.key === 'Escape') onCancel();
+  };
+
+  return (
+    <div className="inline-add-card">
+      <textarea
+        ref={textareaRef}
+        className="inline-add-textarea"
+        value={title}
+        onChange={e => setTitle(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Enter a title for this card..."
+        rows={2}
+      />
+      <div className="inline-add-actions">
+        <button className="inline-add-submit" onClick={handleSubmit} disabled={!title.trim()}>
+          Add Card
+        </button>
+        <button className="inline-add-cancel" onClick={onCancel}>
+          <X size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════
 //  COLUMN
 // ══════════════════════════════════════════════════════
 
-function KanbanColumn({ column, onAddCard, onSelectCard }: {
+function KanbanColumn({ column, onAddCard, onSelectCard, onGripMouseDown, isDragOver }: {
   column: ColumnData;
-  onAddCard: (colId: string) => void;
+  onAddCard: (colId: string, title: string) => void;
   onSelectCard: (card: CardData) => void;
+  onGripMouseDown: (e: React.MouseEvent, cardId: string, columnId: string) => void;
+  isDragOver: boolean;
 }) {
+  const [showAddForm, setShowAddForm] = useState(false);
+
   return (
-    <div className="kanban-column" style={{ '--col-color': column.color } as React.CSSProperties}>
+    <div
+      className={`kanban-column ${isDragOver ? 'column-drag-over' : ''}`}
+      style={{ '--col-color': column.color } as React.CSSProperties}
+      data-column-id={column.id}
+    >
       <div className="kanban-column-header">
         <div className="kanban-column-title">
           <span className="dot" style={{ background: column.color }} />
@@ -382,16 +711,32 @@ function KanbanColumn({ column, onAddCard, onSelectCard }: {
         </div>
         <span className="kanban-column-count">{column.cards.length}</span>
       </div>
-      <SortableContext items={column.cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-        <div className="kanban-cards">
-          {column.cards.map((card) => (
-            <SortableCard key={card.id} card={card} onSelect={onSelectCard} />
-          ))}
-          <button className="add-card-btn" onClick={() => onAddCard(column.id)}>
+      <div className="kanban-cards" style={{ minHeight: 60 }}>
+        {column.cards.map((card) => (
+          <KanbanCard
+            key={card.id}
+            card={card}
+            columnId={column.id}
+            onSelect={onSelectCard}
+            onGripMouseDown={onGripMouseDown}
+          />
+        ))}
+
+        {showAddForm ? (
+          <InlineAddCard
+            columnId={column.id}
+            onSubmit={(colId, title) => {
+              onAddCard(colId, title);
+              // Keep form open for adding more cards
+            }}
+            onCancel={() => setShowAddForm(false)}
+          />
+        ) : (
+          <button className="add-card-btn" onClick={() => setShowAddForm(true)}>
             <Plus size={13} /> Add card
           </button>
-        </div>
-      </SortableContext>
+        )}
+      </div>
     </div>
   );
 }
@@ -403,13 +748,64 @@ function KanbanColumn({ column, onAddCard, onSelectCard }: {
 export function Board() {
   const [boards, setBoards] = useState<BoardData[]>([]);
   const [activeBoardIndex, setActiveBoardIndex] = useState(0);
-  const [activeCard, setActiveCard] = useState<CardData | null>(null);
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncingNow, setSyncingNow] = useState(false);
   const [hasTrello, setHasTrello] = useState(false);
 
-  const columns = boards[activeBoardIndex]?.columns || [];
+  // Mouse-based DnD state
+  const [dragOverColId, setDragOverColId] = useState<string | null>(null);
+  const [chatMinimized, setChatMinimized] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState<BoardAiChatMessage[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [quickPromptsHidden, setQuickPromptsHidden] = useState(false);
+  const [activeSlashIndex, setActiveSlashIndex] = useState(0);
+  const quickPrompts = useMemo(() => ([
+    'Phân tích bottleneck theo workflow hiện tại và nêu 3 insight quan trọng nhất.',
+    'Đề xuất các action có thể apply ngay để đẩy card đang kẹt sang cột tiếp theo.',
+  ]), []);
+  const slashCommands = useMemo<SlashCommand[]>(() => ([
+    {
+      id: 'workflow-bottleneck',
+      label: 'Workflow bottleneck',
+      description: 'Phân tích điểm nghẽn theo từng cột',
+      prompt: 'Phân tích bottleneck theo workflow hiện tại và nêu 3 insight quan trọng nhất.',
+    },
+    {
+      id: 'apply-actions',
+      label: 'Apply-ready actions',
+      description: 'Đề xuất các action có thể apply ngay',
+      prompt: 'Đề xuất các action có thể apply ngay để đẩy card đang kẹt sang cột tiếp theo.',
+    },
+    {
+      id: 'sla-risk',
+      label: 'SLA risk check',
+      description: 'Rà soát nguy cơ trễ hạn trong workflow',
+      prompt: 'Kiểm tra rủi ro trễ hạn theo từng cột workflow và đề xuất xử lý ưu tiên.',
+    },
+  ]), []);
+  const dragRef = useRef<{
+    cardId: string;
+    fromColumnId: string;
+    ghost: HTMLDivElement | null;
+    started: boolean;
+    startX: number;
+    startY: number;
+  } | null>(null);
+
+  const columns = useMemo(() => boards[activeBoardIndex]?.columns ?? [], [boards, activeBoardIndex]);
+  const activeBoard = boards[activeBoardIndex];
+  const showSlashCommands = chatInput.startsWith('/');
+  const slashQuery = showSlashCommands ? chatInput.slice(1).trim().toLowerCase() : '';
+  const filteredSlashCommands = useMemo(() => {
+    if (!showSlashCommands) return [];
+    if (!slashQuery) return slashCommands;
+    return slashCommands.filter((cmd) =>
+      cmd.label.toLowerCase().includes(slashQuery) ||
+      cmd.description.toLowerCase().includes(slashQuery)
+    );
+  }, [showSlashCommands, slashQuery, slashCommands]);
 
   useEffect(() => {
     loadBoards();
@@ -427,13 +823,153 @@ export function Board() {
     });
   }, []);
 
+  useEffect(() => {
+    const boardId = activeBoard?.id;
+    if (!boardId) {
+      setChatMessages([]);
+      setQuickPromptsHidden(false);
+      return;
+    }
+    (async () => {
+      try {
+        const rows = await getBoardAiMessages(boardId, 100);
+        setQuickPromptsHidden(rows.length > 0);
+        setChatMessages(rows
+          .filter((r): r is typeof r & { role: 'user' | 'assistant' } => r.role === 'user' || r.role === 'assistant')
+          .map((r) => {
+            let actions: BoardAiAction[] | undefined;
+            try {
+              const meta = JSON.parse(r.metadata || '{}') as { actions?: BoardAiAction[] };
+              actions = meta.actions;
+            } catch {
+              actions = undefined;
+            }
+            return {
+              id: r.id,
+              role: r.role,
+              content: r.content,
+              createdAt: r.created_at,
+              actions,
+            };
+          }));
+      } catch (e) {
+        console.error('AI chat history load error:', e);
+      }
+    })();
+  }, [activeBoard?.id]);
+
+  useEffect(() => {
+    if (!showSlashCommands) {
+      setActiveSlashIndex(0);
+      return;
+    }
+    if (activeSlashIndex >= filteredSlashCommands.length) {
+      setActiveSlashIndex(0);
+    }
+  }, [showSlashCommands, activeSlashIndex, filteredSlashCommands.length]);
+
   async function loadBoards() {
     try {
       const all = await getBoards();
-      setBoards(all);
+      setBoards(toBoardData(all));
     } catch (e) { console.error('Board load error:', e); }
     setLoading(false);
   }
+
+  const applySlashCommand = useCallback((command: SlashCommand) => {
+    setChatInput(command.prompt);
+    setQuickPromptsHidden(true);
+    setActiveSlashIndex(0);
+  }, []);
+
+  const handleSendAiPrompt = useCallback(async () => {
+    const board = boards[activeBoardIndex];
+    const text = chatInput.trim();
+    if (!board || !text || chatLoading) return;
+
+    const userMsg: BoardAiChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: text,
+      createdAt: Date.now(),
+    };
+
+    setChatInput('');
+    setChatLoading(true);
+    setChatMessages((prev) => [...prev, userMsg]);
+
+    try {
+      await saveBoardAiMessage({
+        board_id: board.id,
+        role: 'user',
+        content: text,
+      });
+
+      let assistantText = '';
+      await chatStream(
+        [
+          ...chatMessages.map((m) => ({ role: m.role, content: m.content })),
+          { role: 'user', content: buildBoardAiPrompt(board.title, board.columns, text) },
+        ],
+        (chunk) => {
+          assistantText += chunk;
+          setChatMessages((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === 'assistant' && last.id === 'streaming-assistant') {
+              copy[copy.length - 1] = {
+                ...last,
+                content: assistantText,
+                actions: parseActionsFromAssistant(assistantText),
+              };
+              return copy;
+            }
+            return [...copy, {
+              id: 'streaming-assistant',
+              role: 'assistant',
+              content: assistantText,
+              createdAt: Date.now(),
+              actions: parseActionsFromAssistant(assistantText),
+            }];
+          });
+        },
+        () => undefined
+      );
+
+      const actions = parseActionsFromAssistant(assistantText);
+      const finalAssistantMsg: BoardAiChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: assistantText,
+        createdAt: Date.now(),
+        actions,
+      };
+      setChatMessages((prev) => [
+        ...prev.filter((m) => m.id !== 'streaming-assistant'),
+        finalAssistantMsg,
+      ]);
+
+      await saveBoardAiMessage({
+        board_id: board.id,
+        role: 'assistant',
+        content: assistantText,
+        metadata: JSON.stringify({ actions }),
+      });
+    } catch (e) {
+      const errText = e instanceof Error ? e.message : 'Unknown error';
+      setChatMessages((prev) => [
+        ...prev.filter((m) => m.id !== 'streaming-assistant'),
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `⚠️ AI error: ${errText}`,
+          createdAt: Date.now(),
+        },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
+  }, [activeBoardIndex, boards, chatInput, chatLoading, chatMessages]);
 
   const stats = useMemo(() => {
     const totalCards = columns.reduce((s, c) => s + c.cards.length, 0);
@@ -446,57 +982,112 @@ export function Board() {
     return { totalCards, totalChecklists, totalLinks, overdue, columns: columns.length };
   }, [columns]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
+  // ── Mouse-based drag-and-drop ──────────────────────
+  const handleGripMouseDown = useCallback((e: React.MouseEvent, cardId: string, columnId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
 
-  const findColumn = useCallback(
-    (cardId: string) => columns.find((col) => col.cards.some((c) => c.id === cardId)),
-    [columns]
-  );
+    dragRef.current = {
+      cardId,
+      fromColumnId: columnId,
+      ghost: null,
+      started: false,
+      startX: e.clientX,
+      startY: e.clientY,
+    };
 
-  const handleDragStart = (event: DragStartEvent) => {
-    const col = findColumn(String(event.active.id));
-    const card = col?.cards.find((c) => c.id === event.active.id);
-    if (card) setActiveCard(card);
-  };
+    const onMouseMove = (ev: MouseEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
 
-  const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-    const activeId = String(active.id);
-    const overId = String(over.id);
-    if (activeId === overId) return;
-    const activeCol = findColumn(activeId);
-    const overCol = findColumn(overId) || columns.find((c) => c.id === overId);
-    if (!activeCol || !overCol || activeCol.id === overCol.id) return;
+      // Start dragging after 5px threshold
+      if (!drag.started) {
+        const dx = ev.clientX - drag.startX;
+        const dy = ev.clientY - drag.startY;
+        if (Math.sqrt(dx * dx + dy * dy) < 5) return;
+        drag.started = true;
 
-    setBoards((prevBoards) => {
-      const newBoards = [...prevBoards];
-      const board = { ...newBoards[activeBoardIndex] };
-      const movedCard = activeCol.cards.find((c) => c.id === activeId);
-      if (!movedCard) return prevBoards;
-      board.columns = board.columns.map((col) => {
-        if (col.id === activeCol.id) return { ...col, cards: col.cards.filter((c) => c.id !== activeId) };
-        if (col.id === overCol.id) {
-          const overIndex = col.cards.findIndex((c) => c.id === overId);
-          const newCards = [...col.cards];
-          overIndex >= 0 ? newCards.splice(overIndex, 0, movedCard) : newCards.push(movedCard);
-          return { ...col, cards: newCards };
+        // Create ghost element
+        const cardEl = document.querySelector(`[data-card-id="${drag.cardId}"]`) as HTMLElement;
+        if (cardEl) {
+          cardEl.classList.add('dragging');
+          const ghost = document.createElement('div');
+          ghost.className = 'kanban-card-ghost';
+          ghost.style.width = cardEl.offsetWidth + 'px';
+          ghost.textContent = cardEl.querySelector('.kanban-card-title')?.textContent || '';
+          document.body.appendChild(ghost);
+          drag.ghost = ghost;
         }
-        return col;
-      });
-      newBoards[activeBoardIndex] = board;
-      return newBoards;
-    });
-  };
+      }
 
-  const handleDragEnd = () => setActiveCard(null);
+      // Move ghost
+      if (drag.ghost) {
+        drag.ghost.style.left = ev.clientX + 12 + 'px';
+        drag.ghost.style.top = ev.clientY - 10 + 'px';
+      }
 
-  const handleAddCard = async (columnId: string) => {
-    const title = prompt('Card title:');
-    if (!title) return;
+      // Find which column the cursor is over
+      const elements = document.elementsFromPoint(ev.clientX, ev.clientY);
+      const colEl = elements.find(el => el.hasAttribute('data-column-id'));
+      const hoveredColId = colEl?.getAttribute('data-column-id') || null;
+      setDragOverColId(hoveredColId);
+    };
+
+    const onMouseUp = (ev: MouseEvent) => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+
+      const drag = dragRef.current;
+      if (!drag) return;
+
+      // Remove ghost
+      if (drag.ghost) {
+        drag.ghost.remove();
+      }
+
+      // Remove dragging class
+      const cardEl = document.querySelector(`[data-card-id="${drag.cardId}"]`) as HTMLElement;
+      if (cardEl) cardEl.classList.remove('dragging');
+
+      // Find target column
+      if (drag.started) {
+        const elements = document.elementsFromPoint(ev.clientX, ev.clientY);
+        const colEl = elements.find(el => el.hasAttribute('data-column-id'));
+        const toColumnId = colEl?.getAttribute('data-column-id');
+
+        if (toColumnId && toColumnId !== drag.fromColumnId) {
+          // Move card!
+          setBoards((prevBoards) => {
+            const newBoards = [...prevBoards];
+            const board = { ...newBoards[activeBoardIndex] };
+            const fromCol = board.columns.find(c => c.id === drag.fromColumnId);
+            const movedCard = fromCol?.cards.find(c => c.id === drag.cardId);
+            if (!movedCard) return prevBoards;
+
+            board.columns = board.columns.map((col) => {
+              if (col.id === drag.fromColumnId) {
+                return { ...col, cards: col.cards.filter(c => c.id !== drag.cardId) };
+              }
+              if (col.id === toColumnId) {
+                return { ...col, cards: [...col.cards, movedCard] };
+              }
+              return col;
+            });
+            newBoards[activeBoardIndex] = board;
+            return newBoards;
+          });
+        }
+      }
+
+      setDragOverColId(null);
+      dragRef.current = null;
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [activeBoardIndex]);
+
+  const handleAddCard = async (columnId: string, title: string) => {
     try {
       await dbCreateCard(columnId, title);
       loadBoards();
@@ -512,6 +1103,26 @@ export function Board() {
         return newBoards;
       });
     }
+  };
+
+  const handleSaveCard = async (cardId: string, updates: Partial<CardData>) => {
+    try {
+      await dbUpdateCard(cardId, {
+        title: updates.title,
+        description: updates.description,
+        priority: updates.priority,
+        labels: updates.labels,
+        due_date: updates.due_date,
+        checklists: updates.checklists,
+        links: updates.links,
+        attachments: updates.attachments,
+      });
+      await loadBoards();
+    } catch (e) {
+      console.error('Save error:', e);
+    }
+    // Refresh selected card
+    setSelectedCard((prev) => prev ? { ...prev, ...updates } : null);
   };
 
   const handleSyncNow = async () => {
@@ -540,7 +1151,7 @@ export function Board() {
         title={boards[activeBoardIndex]?.title || 'Kanban Board'}
         subtitle={`${stats.totalCards} cards across ${stats.columns} columns`}
         addLabel="New Card"
-        onAdd={() => columns[0] && handleAddCard(columns[0].id)}
+        onAdd={() => columns[0] && handleAddCard(columns[0].id, 'New Card')}
       />
       <div className="page-content">
         <div className="kanban-board-wrapper">
@@ -602,37 +1213,202 @@ export function Board() {
           </div>
 
           {/* Board */}
-          <DndContext sensors={sensors} collisionDetection={closestCorners}
-            onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-            <div className="kanban-board">
-              {columns.map((col) => (
-                <KanbanColumn key={col.id} column={col} onAddCard={handleAddCard} onSelectCard={setSelectedCard} />
-              ))}
-            </div>
-            <DragOverlay>
-              {activeCard ? (
-                <div className="kanban-card" style={{
-                  boxShadow: '0 12px 28px rgba(0,0,0,0.15)',
-                  transform: 'rotate(2deg) scale(1.02)',
-                  borderColor: 'var(--accent)',
-                }}>
-                  <div className="kanban-card-priority-strip"
-                    style={{ background: PRIORITY_COLORS[activeCard.priority] || PRIORITY_COLORS.medium }} />
-                  <div className="kanban-card-title">{activeCard.title}</div>
-                  {activeCard.description && (
-                    <div className="kanban-card-desc">{activeCard.description.slice(0, 60)}…</div>
-                  )}
-                </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
+          <div className="kanban-board">
+            {columns.map((col) => (
+              <KanbanColumn
+                key={col.id}
+                column={col}
+                onAddCard={handleAddCard}
+                onSelectCard={setSelectedCard}
+                onGripMouseDown={handleGripMouseDown}
+                isDragOver={dragOverColId === col.id}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Card Detail Panel */}
       {selectedCard && (
-        <CardDetailPanel card={selectedCard} onClose={() => setSelectedCard(null)} />
+        <CardDetailPanel
+          card={selectedCard}
+          onClose={() => setSelectedCard(null)}
+          onSave={handleSaveCard}
+        />
       )}
+
+      {/* Kanban AI Chatbox */}
+      <div className="kanban-ai-chat">
+        {chatMinimized ? (
+          <button
+            className="kanban-ai-fab"
+            onClick={() => setChatMinimized(false)}
+            aria-label="Open AI chat"
+            title="Open AI chat"
+          >
+            <Bot size={18} />
+          </button>
+        ) : (
+          <div className="kanban-ai-panel">
+            <div
+              className="kanban-ai-header"
+              onClick={() => setChatMinimized(true)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setChatMinimized(true);
+                }
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Bot size={14} />
+                <strong>Workflow Insight</strong>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span>{activeBoard?.title || 'Board'}</span>
+                <button
+                  className="kanban-ai-close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setChatMinimized(true);
+                  }}
+                  aria-label="Minimize chat"
+                  title="Minimize chat"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <>
+              <div className="kanban-ai-messages">
+                {chatMessages.length === 0 && (
+                  <div className="kanban-ai-empty">
+                    Hỏi AI để phân tích bottleneck theo cột/workflow và nhận gợi ý có thể apply ngay.
+                  </div>
+                )}
+                {chatMessages.map((msg) => (
+                  <div key={msg.id} className={`kanban-ai-message ${msg.role}`}>
+                    <div className={`kanban-ai-avatar ${msg.role}`}>
+                      {msg.role === 'assistant' ? <Bot size={16} /> : <User size={16} />}
+                    </div>
+                    <div className="kanban-ai-bubble-wrap">
+                      <span className="kanban-ai-bubble-label">
+                        {msg.role === 'assistant' ? 'AI Assistant' : 'You'}
+                      </span>
+                      <div className={`kanban-ai-message-body ${msg.role}`}>
+                        {msg.role === 'assistant' ? formatAssistantDisplayText(msg.content) : msg.content}
+                      </div>
+                      {msg.role === 'assistant' && msg.actions && msg.actions.length > 0 && (
+                        <div className="kanban-ai-actions-suggested">
+                          <div className="kanban-ai-actions-title">Suggested next actions</div>
+                          <div className="kanban-ai-actions-list">
+                            {msg.actions.map((action, idx) => (
+                              <div key={action.id} className="kanban-ai-actions-item">
+                                {idx + 1}. {action.label}{action.reason ? ` - ${action.reason}` : ''}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="kanban-ai-input-wrap">
+                {!quickPromptsHidden && (
+                  <div className="kanban-ai-quick-actions">
+                    {quickPrompts.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        className="kanban-ai-quick-btn"
+                        onClick={() => {
+                          setChatInput(prompt);
+                          setQuickPromptsHidden(true);
+                        }}
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <textarea
+                  className="kanban-ai-input"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  rows={2}
+                  placeholder="Ví dụ: phân tích bottleneck theo workflow tuần này và đề xuất action"
+                  onKeyDown={(e) => {
+                    if (showSlashCommands && filteredSlashCommands.length > 0) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setActiveSlashIndex((prev) => (prev + 1) % filteredSlashCommands.length);
+                        return;
+                      }
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setActiveSlashIndex((prev) => (prev - 1 + filteredSlashCommands.length) % filteredSlashCommands.length);
+                        return;
+                      }
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        const selected = filteredSlashCommands[activeSlashIndex];
+                        if (selected) applySlashCommand(selected);
+                        return;
+                      }
+                    }
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      void handleSendAiPrompt();
+                    }
+                  }}
+                />
+                {showSlashCommands && (
+                  <div className="kanban-ai-slash-menu">
+                    {filteredSlashCommands.length === 0 ? (
+                      <div className="kanban-ai-slash-empty">Không có quick suggestion phù hợp</div>
+                    ) : (
+                      filteredSlashCommands.map((command, index) => (
+                        <button
+                          key={command.id}
+                          type="button"
+                          className={`kanban-ai-slash-item ${index === activeSlashIndex ? 'active' : ''}`}
+                          onClick={() => applySlashCommand(command)}
+                        >
+                          <div className="kanban-ai-slash-label">/{command.label}</div>
+                          <div className="kanban-ai-slash-desc">{command.description}</div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+                <button
+                  className="kanban-ai-send-btn"
+                  onClick={() => void handleSendAiPrompt()}
+                  disabled={chatLoading || !chatInput.trim() || chatInput.trim().startsWith('/')}
+                  title="Send"
+                >
+                  <Send size={16} />
+                </button>
+                <div className="kanban-ai-input-footer">
+                  <span className="kanban-ai-input-hint">Gõ "/" để mở quick suggestion. AI can make mistakes.</span>
+                  <button
+                    type="button"
+                    className="kanban-ai-slash-tip-btn"
+                    onClick={() => setChatInput('/')}
+                  >
+                    /
+                  </button>
+                </div>
+              </div>
+            </>
+          </div>
+        )}
+      </div>
     </>
   );
 }
