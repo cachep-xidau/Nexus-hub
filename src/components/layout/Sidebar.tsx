@@ -50,6 +50,7 @@ const ICON_MAP: Record<string, typeof BookOpen> = {
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/knowledge', label: 'Knowledge Hub', icon: BookOpen },
+  { href: '/tableplus', label: 'TablePlus', icon: Database },
   { href: '/repo', label: 'Repo', icon: Database },
   { href: '/board/default', label: 'Kanban Board', icon: Kanban },
   { href: '/inbox', label: 'Inbox', icon: Inbox },
@@ -196,13 +197,24 @@ export function Sidebar() {
 
         <div className="sidebar-section-title">Channels</div>
         {channelItems.map((item) => (
-          <div key={item.label} className="nav-item" style={{ cursor: 'default' }}>
-            <item.icon className="icon" size={18} style={{ color: item.color }} />
-            {item.label}
-            <span className="badge" style={{ background: item.color, opacity: 0.8, fontSize: '10px' }}>
-              —
-            </span>
-          </div>
+          item.label === 'Gmail' ? (
+            <Link
+              key={item.label}
+              to="/gmail"
+              className={`nav-item ${location.pathname === '/gmail' ? 'active' : ''}`}
+            >
+              <item.icon className="icon" size={18} style={{ color: item.color }} />
+              {item.label}
+            </Link>
+          ) : (
+            <div key={item.label} className="nav-item" style={{ cursor: 'default' }}>
+              <item.icon className="icon" size={18} style={{ color: item.color }} />
+              {item.label}
+              <span className="badge" style={{ background: item.color, opacity: 0.8, fontSize: '10px' }}>
+                —
+              </span>
+            </div>
+          )
         ))}
 
         <div className="sidebar-section-title">System</div>

@@ -1,5 +1,7 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+mod db;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -238,6 +240,16 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_opener::init())
+        .manage(db::get_connection_pool())
+        .invoke_handler(tauri::generate_handler![
+            db::db_connect,
+            db::db_disconnect,
+            db::db_query,
+            db::db_execute,
+            db::db_get_tables,
+            db::db_get_columns,
+        ])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
