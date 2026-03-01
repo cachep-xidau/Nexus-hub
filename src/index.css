@@ -3021,7 +3021,8 @@ body {
   backdrop-filter: blur(4px);
 }
 
-.modal-panel {
+.modal-panel,
+.modal-content {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
@@ -3038,6 +3039,7 @@ body {
   margin-bottom: var(--space-4);
 }
 
+.modal-header h2,
 .modal-header h3 {
   font-size: var(--text-lg);
   font-weight: var(--weight-bold);
@@ -5347,7 +5349,8 @@ body {
 
 /* Article Markdown */
 .knowledge-article {
-  max-width: 75ch;
+  width: 100%;
+  max-width: none;
   line-height: var(--leading-relaxed);
 }
 
