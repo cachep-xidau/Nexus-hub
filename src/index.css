@@ -6526,6 +6526,20 @@ body {
 .sidebar-footer {
   margin-top: auto;
   padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sidebar-logout {
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.sidebar-logout:hover {
+  opacity: 1;
+  color: var(--error);
 }
 
 /* Content */

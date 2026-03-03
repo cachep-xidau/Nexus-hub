@@ -31,8 +31,10 @@ import {
   Users,
   Globe,
   Layers,
+  LogOut,
 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
+import { useAuth } from '../../lib/auth';
 import {
   getDomainBySlug,
   getArticlesByDomain,
@@ -134,6 +136,7 @@ function KnowledgeDomainSidebar({
   onToggleSidebar: () => void;
 }) {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [domain, setDomain] = useState<KnowledgeDomain | null>(null);
   const [sections, setSections] = useState<ArticleSection[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -223,6 +226,15 @@ function KnowledgeDomainSidebar({
 
       <div className="sidebar-footer">
         <ThemeToggle />
+        <button
+          type="button"
+          className="nav-item sidebar-logout"
+          onClick={() => logout().catch(console.error)}
+          title="Logout"
+        >
+          <LogOut className="icon" size={18} />
+          <span className="nav-label">Logout</span>
+        </button>
       </div>
     </aside>
   );
@@ -231,6 +243,7 @@ function KnowledgeDomainSidebar({
 export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => readStoredCollapsed());
   const [sectionsOpen, setSectionsOpen] = useState<SidebarSectionState>(() => {
     const stored = readStoredSections();
@@ -472,6 +485,15 @@ export function Sidebar() {
 
       <div className="sidebar-footer">
         <ThemeToggle />
+        <button
+          type="button"
+          className="nav-item sidebar-logout"
+          onClick={() => logout().catch(console.error)}
+          title="Logout"
+        >
+          <LogOut className="icon" size={18} />
+          <span className="nav-label">Logout</span>
+        </button>
       </div>
     </aside>
   );

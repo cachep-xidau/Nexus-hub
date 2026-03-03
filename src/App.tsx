@@ -45,7 +45,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppContent() {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading } = useAuth();
   const [isOffline, setIsOffline] = useState(false);
 
   useEffect(() => {
@@ -94,11 +94,6 @@ function AppContent() {
             Offline mode. React Query requests paused until connection is restored.
           </div>
         )}
-        <div className="login-gate-toolbar">
-          <button type="button" className="btn btn-sm" onClick={() => logout().catch(console.error)}>
-            Logout
-          </button>
-        </div>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
