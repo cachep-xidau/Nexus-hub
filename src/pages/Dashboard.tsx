@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Header } from '../components/layout/Header';
+import { useOnboarding } from '../components/onboarding/useOnboarding';
+import { WelcomeOverlay } from '../components/onboarding/WelcomeOverlay';
 import {
   Inbox, Kanban, CheckCircle2, Bot, Slack, Mail, Send, TrendingUp, Clock,
 } from 'lucide-react';
@@ -21,9 +23,14 @@ const recentActivity = [
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const { isCompleted, isLoading, completeOnboarding } = useOnboarding();
 
   return (
     <>
+      {/* Welcome overlay for first-time users */}
+      {!isCompleted && !isLoading && (
+        <WelcomeOverlay onComplete={completeOnboarding} />
+      )}
       <Header title="Dashboard" subtitle="Overview of your channels and tasks" />
       <div className="page-content">
         <div className="dashboard-stats stagger">
