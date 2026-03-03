@@ -11,9 +11,75 @@
     "sql:allow-execute",
     "sql:allow-close",
     "http:default",
+    "opener:default",
+    "shell:default",
+    "shell:allow-kill",
+    "shell:allow-stdin-write",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "node",
+          "cmd": "node",
+          "args": true
+        },
+        {
+          "name": "npm",
+          "cmd": "npm",
+          "args": true
+        },
+        {
+          "name": "npx",
+          "cmd": "npx",
+          "args": true
+        },
+        {
+          "name": "kill",
+          "cmd": "kill",
+          "args": true
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "node",
+          "cmd": "node",
+          "args": true
+        },
+        {
+          "name": "npm",
+          "cmd": "npm",
+          "args": true
+        },
+        {
+          "name": "npx",
+          "cmd": "npx",
+          "args": true
+        },
+        {
+          "name": "kill",
+          "cmd": "kill",
+          "args": true
+        }
+      ]
+    },
+    "fs:default",
+    "fs:allow-read",
+    "fs:allow-write",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
     {
       "identifier": "http:default",
       "allow": [
+        {
+          "url": "http://localhost:3000/**"
+        },
+        {
+          "url": "https://*.railway.app/**"
+        },
         {
           "url": "https://slack.com/**"
         },
@@ -28,6 +94,12 @@
         },
         {
           "url": "https://www.googleapis.com/**"
+        },
+        {
+          "url": "https://oauth2.googleapis.com/**"
+        },
+        {
+          "url": "https://gmail.googleapis.com/**"
         },
         {
           "url": "https://api.openai.com/**"
