@@ -6,6 +6,8 @@
 
 import {
   getBoardFull,
+  getBoards as getTrelloBoards,
+  getMemberCards,
   mapBoard,
   mapCard,
   mapList,
@@ -95,6 +97,40 @@ export async function getWorkspaceInboxBridgeConfig(): Promise<{ boardId: string
   const boardId = await getSetting('trello_workspace_inbox_board_id');
   const listId = await getSetting('trello_workspace_inbox_list_id');
   return { boardId: boardId || null, listId: listId || null };
+}
+
+async function importWorkspaceInboxToBridgeList(
+  key: string,
+  token: string,
+  bridge: { boardId: string | null; listId: string | null }
+): Promise<number> {
+  if (!bridge.boardId || !bridge.listId) return 0;
+
+  const [openBoards, memberCards] = await Promise.all([
+    getTrelloBoards(key, token),
+    getMemberCards(key, token),
+  ]);
+
+  const openBoardIds = new Set(openBoards.map((b) => b.id));
+  const candidates = memberCards.filter((card) => {
+    if (card.closed) return false;
+    if (card.idList === bridge.listId) return false;
+    const boardId = typeof card.idBoard === 'string' ? card.idBoard : '';
+    // Best-effort heuristic: cards not attached to visible open boards are likely inbox-like items.
+    return !boardId || !openBoardIds.has(boardId);
+  });
+
+  let moved = 0;
+  for (const card of candidates) {
+    try {
+      await moveTrelloCard(card.id, { idList: bridge.listId, pos: 'top' }, key, token);
+      moved += 1;
+    } catch {
+      // keep best-effort behavior; ignore individual move errors
+    }
+  }
+
+  return moved;
 }
 
 // ── DB Upsert Functions (pull) ────────────────────
@@ -339,6 +375,8 @@ export async function syncAllBoards(): Promise<{ boards: number; cards: number }
   }
   if (combinedBoardIds.length === 0) throw new Error('No boards selected for sync');
 
+  const importedFromInbox = await importWorkspaceInboxToBridgeList(creds.key, creds.token, bridge);
+
   let totalCards = 0;
   for (const boardId of combinedBoardIds) {
     const bridgeOnlyBoard = !!bridge.boardId && boardId === bridge.boardId && !boardIds.includes(boardId);
@@ -352,7 +390,7 @@ export async function syncAllBoards(): Promise<{ boards: number; cards: number }
   }
 
   await saveSetting('trello_last_sync', new Date().toISOString());
-  return { boards: combinedBoardIds.length, cards: totalCards };
+  return { boards: combinedBoardIds.length, cards: totalCards + importedFromInbox };
 }
 
 // ── Push Queue (local -> Trello) ───────────────────

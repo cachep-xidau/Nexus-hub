@@ -61,6 +61,14 @@ export interface TrelloCard {
     url: string;
 }
 
+export interface TrelloMemberCard {
+    id: string;
+    idBoard?: string;
+    idList?: string;
+    name: string;
+    closed?: boolean;
+}
+
 export interface TrelloBoardFull {
     board: TrelloBoard;
     lists: TrelloList[];
@@ -166,6 +174,19 @@ export async function getBoardLists(boardId: string, key: string, token: string)
         undefined,
         {
             fields: 'name,pos,closed',
+            filter: 'open',
+        }
+    );
+}
+
+export async function getMemberCards(key: string, token: string): Promise<TrelloMemberCard[]> {
+    return trelloRequest<TrelloMemberCard[]>(
+        '/members/me/cards',
+        key,
+        token,
+        undefined,
+        {
+            fields: 'name,idBoard,idList,closed',
             filter: 'open',
         }
     );

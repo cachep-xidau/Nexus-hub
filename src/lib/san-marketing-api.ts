@@ -232,24 +232,24 @@ export async function fetchEntries(companyId: string, start?: string, end?: stri
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     const json = await res.json();
     // API returns { entries: [...] } wrapper with different field names
-    const raw: any[] = Array.isArray(json) ? json : (json.entries || []);
+    const raw = (Array.isArray(json) ? json : (json.entries || [])) as Record<string, unknown>[];
     return raw.map(r => ({
-        id: r.id || String(Math.random()),
-        companyId: r.companyId || companyId,
-        date: r.date || '',
-        month: r.month || '',
-        campaignId: parseInt(r.campaignId) || 0,
-        campaignName: r.campaignName || '',
-        channel: r.channel || '',
-        totalLead: r.totalLead ?? r.total ?? 0,
-        spam: r.spam ?? 0,
-        potential: r.potential ?? 0,
-        quality: r.quality ?? 0,
-        booked: r.booked ?? 0,
-        arrived: r.arrived ?? 0,
-        closed: r.closed ?? 0,
-        bill: r.bill ?? r.bills ?? 0,
-        budgetTarget: r.budgetTarget ?? 0,
-        budgetActual: r.budgetActual ?? 0,
+        id: String(r.id ?? Math.random()),
+        companyId: String(r.companyId ?? companyId),
+        date: String(r.date ?? ''),
+        month: String(r.month ?? ''),
+        campaignId: Number.parseInt(String(r.campaignId ?? 0), 10) || 0,
+        campaignName: String(r.campaignName ?? ''),
+        channel: String(r.channel ?? ''),
+        totalLead: Number(r.totalLead ?? r.total ?? 0),
+        spam: Number(r.spam ?? 0),
+        potential: Number(r.potential ?? 0),
+        quality: Number(r.quality ?? 0),
+        booked: Number(r.booked ?? 0),
+        arrived: Number(r.arrived ?? 0),
+        closed: Number(r.closed ?? 0),
+        bill: Number(r.bill ?? r.bills ?? 0),
+        budgetTarget: Number(r.budgetTarget ?? 0),
+        budgetActual: Number(r.budgetActual ?? 0),
     }));
 }

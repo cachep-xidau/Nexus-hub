@@ -75,6 +75,26 @@ export interface McpConnection {
     updated_at: number;
 }
 
+export interface RepoEpic {
+    id: string;
+    title: string;
+    description: string | null;
+    sort_order: number;
+    project_id: string;
+    created_at: number;
+    stories?: RepoStory[];
+}
+
+export interface RepoStory {
+    id: string;
+    title: string;
+    description: string | null;
+    acceptance_criteria: string | null;
+    sort_order: number;
+    epic_id: string;
+    created_at: number;
+}
+
 // ── Projects ────────────────────────────────────────
 export async function getProjects(): Promise<RepoProject[]> {
     const d = await getDb();
@@ -361,6 +381,94 @@ export async function updateMcpConnection(id: string, data: { status?: string; t
 export async function deleteMcpConnection(id: string): Promise<void> {
     const d = await getDb();
     await d.execute('DELETE FROM repo_mcp_connections WHERE id = ?', [id]);
+}
+
+// ── Epics & Stories ─────────────────────────────────
+let _epicTablesReady = false;
+async function ensureEpicStoryTables(): Promise<void> {
+    if (_epicTablesReady) return;
+    const d = await getDb();
+    await d.execute(`CREATE TABLE IF NOT EXISTS repo_epics (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        sort_order INTEGER DEFAULT 0,
+        project_id TEXT NOT NULL,
+        created_at INTEGER
+    )`);
+    await d.execute(`CREATE TABLE IF NOT EXISTS repo_stories (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        acceptance_criteria TEXT,
+        sort_order INTEGER DEFAULT 0,
+        epic_id TEXT NOT NULL,
+        created_at INTEGER
+    )`);
+    _epicTablesReady = true;
+}
+
+export async function getEpics(projectId: string): Promise<RepoEpic[]> {
+    await ensureEpicStoryTables();
+    const d = await getDb();
+    const epics = await d.select<RepoEpic[]>(
+        'SELECT * FROM repo_epics WHERE project_id = ? ORDER BY sort_order', [projectId]
+    );
+    for (const e of epics) {
+        e.stories = await d.select<RepoStory[]>(
+            'SELECT * FROM repo_stories WHERE epic_id = ? ORDER BY sort_order', [e.id]
+        );
+    }
+    return epics;
+}
+
+export async function createEpic(projectId: string, title: string, description?: string): Promise<string> {
+    await ensureEpicStoryTables();
+    const d = await getDb();
+    const id = crypto.randomUUID();
+    const [cnt] = await d.select<[{ c: number }]>(
+        'SELECT COUNT(*) as c FROM repo_epics WHERE project_id = ?', [projectId]
+    );
+    await d.execute(
+        'INSERT INTO repo_epics (id, title, description, sort_order, project_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [id, title, description || null, cnt.c, projectId, Date.now()]
+    );
+    await touchProject(projectId);
+    return id;
+}
+
+export async function deleteEpic(id: string): Promise<void> {
+    await ensureEpicStoryTables();
+    const d = await getDb();
+    await d.execute('DELETE FROM repo_stories WHERE epic_id = ?', [id]);
+    await d.execute('DELETE FROM repo_epics WHERE id = ?', [id]);
+}
+
+export async function createStory(epicId: string, title: string, description?: string, ac?: string): Promise<string> {
+    await ensureEpicStoryTables();
+    const d = await getDb();
+    const id = crypto.randomUUID();
+    const [cnt] = await d.select<[{ c: number }]>(
+        'SELECT COUNT(*) as c FROM repo_stories WHERE epic_id = ?', [epicId]
+    );
+    await d.execute(
+        'INSERT INTO repo_stories (id, title, description, acceptance_criteria, sort_order, epic_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [id, title, description || null, ac || null, cnt.c, epicId, Date.now()]
+    );
+    return id;
+}
+
+export async function deleteStory(id: string): Promise<void> {
+    await ensureEpicStoryTables();
+    const d = await getDb();
+    await d.execute('DELETE FROM repo_stories WHERE id = ?', [id]);
+}
+
+export async function getArtifactsByProject(projectId: string): Promise<RepoArtifact[]> {
+    const d = await getDb();
+    return d.select<RepoArtifact[]>(
+        'SELECT * FROM repo_artifacts WHERE project_id = ? ORDER BY created_at DESC', [projectId]
+    );
 }
 
 // ── Helpers ─────────────────────────────────────────
