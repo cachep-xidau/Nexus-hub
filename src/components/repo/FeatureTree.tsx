@@ -1,21 +1,25 @@
 import { useState } from 'react';
 import {
     ChevronRight, ChevronDown, Plus, Pencil, Trash2, Check, X,
-    Loader2, FolderOpen, Box, FileCode,
+    Loader2, FolderOpen, Box, FileCode, Sparkles,
 } from 'lucide-react';
 import {
-    createFeature, updateFeature, deleteFeature as delFeature,
-    createFunction, updateFunction, deleteFunction as delFunc,
+    useCreateFeature,
+    useUpdateFeature,
+    useDeleteFeature,
+    useCreateFunction,
+    useUpdateFunction,
+    useDeleteFunction,
     type RepoFeature,
-} from '../../lib/repo-db';
+} from '../../lib/hooks/use-repo-api';
 
 interface FeatureTreeProps {
     projectId: string;
     features: RepoFeature[];
-    onRefresh: () => Promise<void>;
+    onGenerate?: (functionId: string) => void;
 }
 
-export function FeatureTree({ projectId, features, onRefresh }: FeatureTreeProps) {
+export function FeatureTree({ projectId, features, onGenerate }: FeatureTreeProps) {
     const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
     const [addingFeature, setAddingFeature] = useState(false);
     const [newFeatureName, setNewFeatureName] = useState('');
@@ -25,10 +29,18 @@ export function FeatureTree({ projectId, features, onRefresh }: FeatureTreeProps
     const [editName, setEditName] = useState('');
     const [saving, setSaving] = useState(false);
 
+    const createFeatureMutation = useCreateFeature();
+    const updateFeatureMutation = useUpdateFeature();
+    const deleteFeatureMutation = useDeleteFeature();
+    const createFunctionMutation = useCreateFunction();
+    const updateFunctionMutation = useUpdateFunction();
+    const deleteFunctionMutation = useDeleteFunction();
+
     const toggle = (id: string) => {
         setExpandedFeatures(prev => {
             const s = new Set(prev);
-            s.has(id) ? s.delete(id) : s.add(id);
+            if (s.has(id)) s.delete(id);
+            else s.add(id);
             return s;
         });
     };
@@ -36,40 +48,60 @@ export function FeatureTree({ projectId, features, onRefresh }: FeatureTreeProps
     const handleAddFeature = async () => {
         if (!newFeatureName.trim() || saving) return;
         setSaving(true);
-        await createFeature(projectId, newFeatureName.trim());
-        setNewFeatureName('');
-        setAddingFeature(false);
-        setSaving(false);
-        await onRefresh();
+        try {
+            await createFeatureMutation.mutateAsync({
+                projectId,
+                name: newFeatureName.trim(),
+            });
+            setNewFeatureName('');
+            setAddingFeature(false);
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleAddFunction = async (featureId: string) => {
         if (!newFuncName.trim() || saving) return;
         setSaving(true);
-        await createFunction(featureId, newFuncName.trim());
-        setNewFuncName('');
-        setAddingFuncTo(null);
-        setSaving(false);
-        await onRefresh();
+        try {
+            await createFunctionMutation.mutateAsync({
+                featureId,
+                name: newFuncName.trim(),
+            });
+            setNewFuncName('');
+            setAddingFuncTo(null);
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleEdit = async (id: string, type: 'feature' | 'function') => {
         if (!editName.trim() || saving) return;
         setSaving(true);
-        if (type === 'feature') await updateFeature(id, { name: editName.trim() });
-        else await updateFunction(id, { name: editName.trim() });
-        setEditingId(null);
-        setSaving(false);
-        await onRefresh();
+        try {
+            if (type === 'feature') {
+                await updateFeatureMutation.mutateAsync({ id, data: { name: editName.trim() } });
+            } else {
+                await updateFunctionMutation.mutateAsync({ id, data: { name: editName.trim() } });
+            }
+            setEditingId(null);
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleDelete = async (id: string, type: 'feature' | 'function') => {
         if (saving) return;
         setSaving(true);
-        if (type === 'feature') await delFeature(id);
-        else await delFunc(id);
-        setSaving(false);
-        await onRefresh();
+        try {
+            if (type === 'feature') {
+                await deleteFeatureMutation.mutateAsync(id);
+            } else {
+                await deleteFunctionMutation.mutateAsync(id);
+            }
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -154,6 +186,12 @@ export function FeatureTree({ projectId, features, onRefresh }: FeatureTreeProps
                                                 </span>
                                             )}
                                             <div className="feature-actions">
+                                                {onGenerate && (
+                                                    <button className="icon-btn-subtle gen-fn-btn" onClick={() => onGenerate(fn.id)}
+                                                        title="Generate artifacts for this function">
+                                                        <Sparkles size={12} /> Gen
+                                                    </button>
+                                                )}
                                                 <button className="icon-btn-subtle" onClick={() => {
                                                     setEditingId(fn.id); setEditName(fn.name);
                                                 }}><Pencil size={12} /></button>

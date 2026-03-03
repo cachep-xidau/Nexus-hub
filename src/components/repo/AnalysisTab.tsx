@@ -1,13 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Lightbulb, TrendingUp, Building2, Wrench, Briefcase,
     Send, Loader2, Trash2, Eye, X, Save, Download, Bot, User,
 } from 'lucide-react';
 import { chatStream } from '../../lib/ai';
 import {
-    getAnalysisDocs, createAnalysisDoc, updateAnalysisDoc, deleteAnalysisDoc,
+    useAnalysisDocs,
+    useCreateAnalysisDoc,
+    useDeleteAnalysisDoc,
     type AnalysisDoc,
-} from '../../lib/repo-db';
+} from '../../lib/hooks/use-repo-api';
 
 type AnalysisType = 'brainstorm' | 'market-research' | 'domain-research' | 'technical-research' | 'product-brief';
 
@@ -50,7 +53,6 @@ interface AnalysisTabProps {
 }
 
 export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
-    const [docs, setDocs] = useState<AnalysisDoc[]>([]);
     const [activeChat, setActiveChat] = useState<AnalysisType | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
@@ -59,16 +61,15 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
     const endRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
-    useEffect(() => { loadDocs(); }, [projectId]);
+    const docsQuery = useAnalysisDocs(projectId);
+    const createDocMutation = useCreateAnalysisDoc();
+    const deleteDocMutation = useDeleteAnalysisDoc();
+
+    const docs = docsQuery.data ?? [];
 
     useEffect(() => {
         endRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, loading]);
-
-    const loadDocs = async () => {
-        const d = await getAnalysisDocs(projectId);
-        setDocs(d);
-    };
 
     const startSession = (type: AnalysisType) => {
         const card = ANALYSIS_CARDS.find(c => c.type === type)!;
@@ -130,13 +131,13 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
             [{ role: 'user', content: `${card.system}\n\n${prompt}` }],
             (chunk) => { result += chunk; },
             async () => {
-                await createAnalysisDoc(projectId, {
+                await createDocMutation.mutateAsync({
+                    projectId,
                     type: activeChat!,
                     title: `${card.name} — ${projectName}`,
                     content: result,
                     status: 'completed',
                 });
-                await loadDocs();
                 closeSlider();
                 setLoading(false);
             }
@@ -144,8 +145,7 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
     };
 
     const handleDelete = async (id: string) => {
-        await deleteAnalysisDoc(id);
-        await loadDocs();
+        await deleteDocMutation.mutateAsync(id);
         if (previewDoc?.id === id) setPreviewDoc(null);
     };
 
@@ -215,8 +215,8 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
                 </div>
             )}
 
-            {/* ── Analysis Slider (side panel overlay) ────────── */}
-            {activeChat && activeCard && (
+            {/* ── Analysis Slider (portaled to body to escape overflow:hidden) ── */}
+            {activeChat && activeCard && createPortal(
                 <div className="analysis-slider-overlay" onClick={closeSlider}>
                     <div className="analysis-slider-panel" onClick={(e) => e.stopPropagation()}>
                         {/* Header */}
@@ -302,7 +302,8 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

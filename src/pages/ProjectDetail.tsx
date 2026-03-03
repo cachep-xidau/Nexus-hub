@@ -1,30 +1,33 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Header } from '../components/layout/Header';
 import { PrdEditor } from '../components/repo/PrdEditor';
 import { FeatureTree } from '../components/repo/FeatureTree';
-import { ArtifactPanel } from '../components/repo/ArtifactPanel';
-import { GenerateModal } from '../components/repo/GenerateModal';
+import { ArtifactsTable } from '../components/repo/ArtifactsTable';
+import { GenerateArtifactsModal } from '../components/repo/GenerateArtifactsModal';
 import { PrdChat } from '../components/repo/PrdChat';
 import { AnalysisTab } from '../components/repo/AnalysisTab';
 import { ConnectionsTab } from '../components/repo/ConnectionsTab';
 import { GuideSection } from '../components/repo/GuideSection';
+import { PrototypePanel } from '../components/repo/PrototypePanel';
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import {
-    Loader2, AlertCircle, ArrowLeft, FileText, GitBranch, Layers, Settings2,
-    Pencil, Check, X, Trash2, Sparkles, MessageSquare, Search, Plug,
-    Plus, ShieldCheck, Edit3, Lightbulb, Download, ArrowRight, Eye,
+    Loader2, AlertCircle, ArrowLeft, FileText, GitBranch, Layers,
+    Sparkles, Search, Plug, Monitor, Plus, ShieldCheck, Edit3,
+    Lightbulb, Download, ArrowRight,
 } from 'lucide-react';
 import {
-    getProject, updateProject, deleteProject, getFeatures,
-    type RepoProject, type RepoFeature,
-} from '../lib/repo-db';
+    useProject,
+    useUpdateProject,
+    useFeatures,
+} from '../lib/hooks/use-repo-api';
 
-type Tab = 'overview' | 'analysis' | 'prd' | 'artifacts' | 'connections';
+type Tab = 'overview' | 'analysis' | 'prd' | 'artifacts' | 'prototype' | 'connections';
 const TABS: { key: Tab; label: string; icon: typeof FileText }[] = [
     { key: 'overview', label: 'Overview', icon: Layers },
     { key: 'analysis', label: 'Analysis', icon: Search },
     { key: 'prd', label: 'PRD', icon: FileText },
     { key: 'artifacts', label: 'Artifacts', icon: GitBranch },
+    { key: 'prototype', label: 'Prototype', icon: Monitor },
     { key: 'connections', label: 'Connections', icon: Plug },
 ];
 
@@ -37,62 +40,53 @@ export function ProjectDetail() {
     const initialTab = (() => {
         const params = new URLSearchParams(window.location.search);
         const t = params.get('tab');
-        return t && ['overview', 'analysis', 'prd', 'artifacts', 'connections'].includes(t) ? t as Tab : 'overview';
+        return t && ['overview', 'analysis', 'prd', 'artifacts', 'prototype', 'connections'].includes(t) ? t as Tab : 'overview';
     })();
 
-    const [project, setProject] = useState<RepoProject | null>(null);
-    const [features, setFeatures] = useState<RepoFeature[]>([]);
-    const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
-    // Edit project
-    const [editing, setEditing] = useState(false);
-    const [editName, setEditName] = useState('');
-    const [editDesc, setEditDesc] = useState('');
     const [showGenerate, setShowGenerate] = useState(false);
+    const [generateFunctionId, setGenerateFunctionId] = useState<string | null>(null);
     const [showPrdChat, setShowPrdChat] = useState(false);
+    const [artifactRefreshKey, setArtifactRefreshKey] = useState(0);
 
-    const loadProject = useCallback(async () => {
-        try {
-            const p = await getProject(projectId);
-            if (!p) { setError('Project not found'); return; }
-            setProject(p);
-            setEditName(p.name);
-            setEditDesc(p.description || '');
-            const feats = await getFeatures(projectId);
-            setFeatures(feats);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load project');
-        } finally {
-            setLoading(false);
-        }
-    }, [projectId]);
+    const projectQuery = useProject(projectId);
+    const featuresQuery = useFeatures(projectId);
+    const updateProjectMutation = useUpdateProject();
 
-    useEffect(() => { loadProject(); }, [loadProject]);
+    const project = projectQuery.data ?? null;
+    const features = featuresQuery.data ?? [];
+    const loading = projectQuery.isLoading || featuresQuery.isLoading;
 
-    const handleSave = async () => {
-        if (!editName.trim()) return;
-        await updateProject(projectId, { name: editName.trim(), description: editDesc.trim() });
-        await loadProject();
-        setEditing(false);
-    };
-
-    const handleDelete = async () => {
-        if (!confirm('Delete this project and all its data?')) return;
-        await deleteProject(projectId);
-        navigate('/repo');
-    };
+    const queryError = projectQuery.error || featuresQuery.error;
+    const queryErrorMessage = queryError instanceof Error
+        ? queryError.message
+        : queryError
+            ? 'Failed to load project'
+            : '';
 
     const handlePrdSave = async (content: string) => {
-        await updateProject(projectId, { prd_content: content });
-        await loadProject();
+        setError('');
+        try {
+            await updateProjectMutation.mutateAsync({
+                id: projectId,
+                data: { prd_content: content },
+            });
+            await projectQuery.refetch();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to update PRD');
+            throw err;
+        }
     };
 
     const refreshFeatures = async () => {
-        const feats = await getFeatures(projectId);
-        setFeatures(feats);
+        await featuresQuery.refetch();
     };
+
+    const refreshArtifactTree = useCallback(() => {
+        setArtifactRefreshKey(k => k + 1);
+    }, []);
 
     if (loading) return (
         <div className="page-content">
@@ -100,11 +94,11 @@ export function ProjectDetail() {
         </div>
     );
 
-    if (error || !project) return (
+    if (error || queryErrorMessage || !project) return (
         <div className="page-content">
             <div className="empty-state">
                 <AlertCircle size={32} style={{ color: 'var(--error)' }} />
-                <h3>{error || 'Project not found'}</h3>
+                <h3>{error || queryErrorMessage || 'Project not found'}</h3>
                 <button className="btn-secondary" onClick={() => navigate('/repo')}>
                     <ArrowLeft size={14} /> Back to Repo
                 </button>
@@ -114,7 +108,6 @@ export function ProjectDetail() {
 
     // Count totals for overview
     const totalFeatures = features.length;
-    const totalFunctions = features.reduce((s, f) => s + (f.functions?.length || 0), 0);
     const totalArtifacts = features.reduce((s, f) =>
         s + (f.functions || []).reduce((fs, fn) => fs + (fn._count?.artifacts || 0), 0), 0);
 
@@ -163,7 +156,7 @@ export function ProjectDetail() {
                             hasPrd={!!project.prd_content}
                             hasFeatures={totalFeatures > 0}
                             hasArtifacts={totalArtifacts > 0}
-                            hasConnections={false}
+                            hasConnections={(project._count?.connections || 0) > 0}
                             onNavigateTab={(tab) => setActiveTab(tab as Tab)}
                         />
 
@@ -173,7 +166,7 @@ export function ProjectDetail() {
                                 { label: 'PRD', value: project.prd_content ? 'Ready' : '—', icon: FileText, tab: 'prd' as Tab },
                                 { label: 'Features', value: totalFeatures, icon: Layers, tab: 'artifacts' as Tab },
                                 { label: 'Artifacts', value: totalArtifacts, icon: GitBranch, tab: 'artifacts' as Tab },
-                                { label: 'Connections', value: 0, icon: Plug, tab: 'connections' as Tab },
+                                { label: 'Connections', value: project._count?.connections ?? 0, icon: Plug, tab: 'connections' as Tab },
                             ].map(card => {
                                 const Icon = card.icon;
                                 return (
@@ -287,46 +280,52 @@ export function ProjectDetail() {
                         {/* Tab Header */}
                         <div className="tab-header">
                             <h2 className="tab-header-title">Artifacts</h2>
-                            <p className="tab-header-subtitle">Phase 3 — Features & Generated Documents</p>
+                            <p className="tab-header-subtitle">Phase 4 — Design Documents & BSA Deliverables</p>
                         </div>
 
-                        {/* Action Cards */}
-                        <div className="prd-action-cards" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginBottom: 'var(--space-md)' }}>
-                            <button className="prd-action-card" onClick={() => setActiveTab('artifacts')}>
-                                <div className="prd-action-card-body">
-                                    <div className="prd-action-card-icon"><Plus size={18} /></div>
-                                    <div>
-                                        <div className="prd-action-card-title">Add Features</div>
-                                        <div className="prd-action-card-desc">Organize modules & functions</div>
-                                    </div>
+                        {/* Action Cards — matching Analysis tab style */}
+                        <div className="analysis-cards-grid">
+                            <button className="analysis-card" onClick={() => {
+                                setGenerateFunctionId(null);
+                                setShowGenerate(true);
+                            }} disabled={!project.prd_content || features.length === 0}>
+                                <Sparkles size={24} />
+                                <div>
+                                    <div className="analysis-card-name">Freestyle Generate</div>
+                                    <div className="analysis-card-desc">Quick artifact generation</div>
                                 </div>
-                                <div className="prd-action-card-cta">Manage tree <ArrowRight size={12} /></div>
                             </button>
-                            <button className="prd-action-card" onClick={() => setShowGenerate(true)}
-                                disabled={!project.prd_content || features.length === 0}>
-                                <div className="prd-action-card-body">
-                                    <div className="prd-action-card-icon"><Sparkles size={18} /></div>
-                                    <div>
-                                        <div className="prd-action-card-title">Generate Artifacts</div>
-                                        <div className="prd-action-card-desc">SRS, ERD, User Stories & more</div>
-                                    </div>
-                                </div>
-                                <div className="prd-action-card-cta">
-                                    {!project.prd_content ? 'PRD required' : features.length === 0 ? 'Add features first' : <>Tạo artifacts <ArrowRight size={12} /></>}
+                            <button className="analysis-card" onClick={() => {
+                                setGenerateFunctionId(null);
+                                setShowGenerate(true);
+                            }} disabled={!project.prd_content || features.length === 0}>
+                                <Layers size={24} />
+                                <div>
+                                    <div className="analysis-card-name">BMAD Generate</div>
+                                    <div className="analysis-card-desc">Epic/Story → BSA artifacts</div>
                                 </div>
                             </button>
                         </div>
 
-                        {/* Feature Tree + Artifact Panel */}
-                        <FeatureTree
-                            projectId={projectId}
-                            features={features}
-                            onRefresh={refreshFeatures}
-                        />
-                        <ArtifactPanel
-                            projectId={projectId}
-                            features={features}
-                        />
+                        {/* Artifacts Table */}
+                        <ArtifactsTable projectId={projectId} refreshKey={artifactRefreshKey} />
+
+                        {/* Feature Tree — collapsible for audit */}
+                        <details className="feature-tree-collapsible" style={{ marginTop: 'var(--space-4)' }}>
+                            <summary className="repo-section-title" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Feature Tree <span className="feature-badge">{features.length}</span>
+                            </summary>
+                            <div style={{ marginTop: 'var(--space-3)' }}>
+                                <FeatureTree
+                                    projectId={projectId}
+                                    features={features}
+                                    onGenerate={(fnId) => {
+                                        setGenerateFunctionId(fnId);
+                                        setShowGenerate(true);
+                                    }}
+                                />
+                            </div>
+                        </details>
                     </div>
                 )}
 
@@ -340,7 +339,90 @@ export function ProjectDetail() {
                 {activeTab === 'connections' && (
                     <ConnectionsTab projectId={projectId} />
                 )}
+
+                {activeTab === 'prototype' && (
+                    <div className="prototype-tab">
+                        <PanelGroup orientation="horizontal" className="prototype-split">
+                            <Panel defaultSize={35} minSize={20} className="prototype-context-panel">
+                                <div className="prototype-context">
+                                    <h3 className="prototype-context-title">Project Context</h3>
+                                    {project.prd_content ? (
+                                        <div className="prototype-context-prd">
+                                            <div className="prototype-context-label">PRD Summary</div>
+                                            <div className="prd-preview" style={{ fontSize: '0.8rem', maxHeight: '100%', overflow: 'auto' }}>
+                                                {project.prd_content.split('\n').slice(0, 50).map((line, i) => {
+                                                    const t = line.trimStart();
+                                                    if (t.startsWith('### ')) return <h4 key={i} style={{ fontSize: '0.85rem', margin: '0.5rem 0 0.25rem' }}>{t.slice(4)}</h4>;
+                                                    if (t.startsWith('## ')) return <h3 key={i} style={{ fontSize: '0.9rem', margin: '0.75rem 0 0.25rem' }}>{t.slice(3)}</h3>;
+                                                    if (t.startsWith('# ')) return <h2 key={i} style={{ fontSize: '1rem', margin: '0.75rem 0 0.25rem' }}>{t.slice(2)}</h2>;
+                                                    if (t === '') return <div key={i} style={{ height: '0.25rem' }} />;
+                                                    return <p key={i} style={{ margin: '0.15rem 0', color: 'var(--text-secondary)' }}>{t}</p>;
+                                                })}
+                                                {(project.prd_content.split('\n').length > 50) && (
+                                                    <p style={{ color: 'var(--text-dim)', fontStyle: 'italic' }}>... (truncated)</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="prototype-context-empty">
+                                            <FileText size={24} style={{ color: 'var(--text-dim)' }} />
+                                            <p>No PRD content yet. Add PRD in the PRD tab first.</p>
+                                        </div>
+                                    )}
+                                    <div className="prototype-context-features">
+                                        <div className="prototype-context-label">Features ({features.length})</div>
+                                        {features.map(f => (
+                                            <div key={f.id} className="prototype-feature-item">
+                                                <Layers size={12} />
+                                                <span>{f.name}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </Panel>
+                            <PanelResizeHandle className="resize-handle" />
+                            <Panel defaultSize={65} minSize={40}>
+                                <PrototypePanel
+                                    projectId={projectId}
+                                    prdContent={project.prd_content}
+                                />
+                            </Panel>
+                        </PanelGroup>
+                    </div>
+                )}
             </div>
+
+            {showGenerate && project.prd_content && (
+                <GenerateArtifactsModal
+                    projectId={projectId}
+                    prdContent={project.prd_content}
+                    features={features}
+                    preSelectedFunctionId={generateFunctionId}
+                    onClose={() => {
+                        setShowGenerate(false);
+                        setGenerateFunctionId(null);
+                    }}
+                    onComplete={() => {
+                        setShowGenerate(false);
+                        setGenerateFunctionId(null);
+                        refreshFeatures();
+                        refreshArtifactTree();
+                    }}
+                />
+            )}
+
+            {showPrdChat && (
+                <PrdChat
+                    projectId={projectId}
+                    projectName={project.name}
+                    existingPrd={project.prd_content || ''}
+                    onClose={() => setShowPrdChat(false)}
+                    onPrdSaved={async () => {
+                        setShowPrdChat(false);
+                        await projectQuery.refetch();
+                    }}
+                />
+            )}
         </>
     );
 }

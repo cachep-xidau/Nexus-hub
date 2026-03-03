@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import {
     FileText, FileCode, Database, Code, GitBranch, ArrowRightLeft,
-    Activity, Users, Monitor, Loader2, Eye, Pencil, Copy, Check, Archive,
+    Activity, Users, Monitor, Loader2, Eye, Copy, Check,
 } from 'lucide-react';
-import { getArtifactTree, type RepoFeature, type RepoArtifact } from '../../lib/repo-db';
+import { useArtifactTree, type RepoFeature, type RepoArtifact } from '../../lib/hooks/use-repo-api';
 
 const ARTIFACT_ICONS: Record<string, typeof FileText> = {
     'user-story': FileText, 'function-list': FileCode, 'srs': FileCode,
     'erd': Database, 'sql': Code, 'flowchart': GitBranch,
     'sequence-diagram': ArrowRightLeft, 'activity-diagram': Activity,
     'use-case-diagram': Users, 'screen-description': Monitor,
+    'prototype': Monitor,
 };
 
 const ARTIFACT_LABELS: Record<string, string> = {
@@ -17,31 +18,29 @@ const ARTIFACT_LABELS: Record<string, string> = {
     'srs': 'SRS', 'erd': 'ERD', 'sql': 'SQL',
     'flowchart': 'Flowchart', 'sequence-diagram': 'Sequence Diagram',
     'activity-diagram': 'Activity Diagram', 'use-case-diagram': 'Use Case',
-    'screen-description': 'Screen Desc',
+    'screen-description': 'Screen Desc', 'prototype': 'Prototype',
 };
 
 interface ArtifactPanelProps {
     projectId: string;
     features: RepoFeature[];
+    prdContent?: string | null;
 }
 
-export function ArtifactPanel({ projectId }: ArtifactPanelProps) {
-    const [tree, setTree] = useState<RepoFeature[]>([]);
-    const [loading, setLoading] = useState(true);
+export function ArtifactPanel({ projectId, prdContent: _prdContent }: ArtifactPanelProps) {
+    void _prdContent; // Reserved for future PRD context usage
     const [selectedArtifact, setSelectedArtifact] = useState<RepoArtifact | null>(null);
     const [viewMode, setViewMode] = useState<'preview' | 'raw'>('preview');
     const [copied, setCopied] = useState(false);
 
-    useEffect(() => {
-        loadTree();
-    }, [projectId]);
+    const treeQuery = useArtifactTree(projectId, 'current');
+    const tree = treeQuery.data ?? [];
+    const loading = treeQuery.isLoading;
+    const refetchTree = treeQuery.refetch;
 
-    const loadTree = async () => {
-        setLoading(true);
-        const data = await getArtifactTree(projectId, 'current');
-        setTree(data);
-        setLoading(false);
-    };
+    useEffect(() => {
+        void refetchTree();
+    }, [projectId, refetchTree]);
 
     const totalArtifacts = tree.reduce((s, f) =>
         s + (f.functions || []).reduce((fs, fn) => fs + (fn.artifacts?.length || 0), 0), 0);
@@ -155,6 +154,8 @@ export function ArtifactPanel({ projectId }: ArtifactPanelProps) {
                     </div>
                 </div>
             )}
+
+
         </div>
     );
 }

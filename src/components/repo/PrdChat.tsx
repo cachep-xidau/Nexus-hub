@@ -3,7 +3,7 @@ import {
     MessageSquare, Send, Loader2, X, Save, ChevronRight,
 } from 'lucide-react';
 import { chatStream } from '../../lib/ai';
-import { updateProject } from '../../lib/repo-db';
+import { useUpdateProject } from '../../lib/hooks/use-repo-api';
 
 // BMAD PRD steps
 const PRD_STEPS = [
@@ -34,7 +34,13 @@ interface PrdChatProps {
 }
 
 export function PrdChat({ projectId, projectName, existingPrd, onClose, onPrdSaved }: PrdChatProps) {
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const updateProjectMutation = useUpdateProject();
+    const [messages, setMessages] = useState<ChatMessage[]>(() => {
+        const greeting = existingPrd
+            ? `Tôi sẽ giúp bạn **chỉnh sửa PRD** cho project **"${projectName}"**.\n\nMô tả mục tiêu chỉnh sửa của bạn:`
+            : `Tôi sẽ giúp bạn tạo **PRD** cho project **"${projectName}"** theo BMAD.\n\nQuy trình gồm **6 phần**:\n${PRD_STEPS.map(s => `${s.step}. ${s.name}`).join('\n')}\n\n${PRD_STEPS[0].name}: Hãy cho tôi biết tên sản phẩm, vấn đề giải quyết, đối tượng mục tiêu.`;
+        return [{ role: 'assistant', content: greeting }];
+    });
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [currentStep, setCurrentStep] = useState(1);
@@ -42,15 +48,6 @@ export function PrdChat({ projectId, projectName, existingPrd, onClose, onPrdSav
     const [saving, setSaving] = useState(false);
     const endRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
-
-    // Initialize with greeting
-    useEffect(() => {
-        const greeting = existingPrd
-            ? `Tôi sẽ giúp bạn **chỉnh sửa PRD** cho project **"${projectName}"**.\n\nMô tả mục tiêu chỉnh sửa của bạn:`
-            : `Tôi sẽ giúp bạn tạo **PRD** cho project **"${projectName}"** theo BMAD.\n\nQuy trình gồm **6 phần**:\n${PRD_STEPS.map(s => `${s.step}. ${s.name}`).join('\n')}\n\n${PRD_STEPS[0].name}: Hãy cho tôi biết tên sản phẩm, vấn đề giải quyết, đối tượng mục tiêu.`;
-
-        setMessages([{ role: 'assistant', content: greeting }]);
-    }, []);
 
     useEffect(() => {
         endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -118,10 +115,16 @@ export function PrdChat({ projectId, projectName, existingPrd, onClose, onPrdSav
     const savePrd = async () => {
         if (!compiledPrd) return;
         setSaving(true);
-        await updateProject(projectId, { prd_content: compiledPrd });
-        setSaving(false);
-        onPrdSaved();
-        onClose();
+        try {
+            await updateProjectMutation.mutateAsync({
+                id: projectId,
+                data: { prd_content: compiledPrd },
+            });
+            onPrdSaved();
+            onClose();
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (

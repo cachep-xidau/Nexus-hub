@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
-    X, Sparkles, Loader2, Check, AlertCircle, ChevronDown,
+    X, Sparkles, Loader2, Check, AlertCircle,
 } from 'lucide-react';
 import { ARTIFACT_TYPE_OPTIONS, type ArtifactType } from '../../lib/pipeline/templates';
 import { runPipeline, type GenerationResult } from '../../lib/pipeline/orchestrator';
-import { getProject, getFeatures, type RepoFeature, type RepoProject } from '../../lib/repo-db';
+import {
+    useProject,
+    useFeatures,
+} from '../../lib/hooks/use-repo-api';
 import { detectProvider } from '../../lib/ai';
 
 interface GenerateModalProps {
@@ -14,8 +17,6 @@ interface GenerateModalProps {
 }
 
 export function GenerateModal({ projectId, onClose, onComplete }: GenerateModalProps) {
-    const [project, setProject] = useState<RepoProject | null>(null);
-    const [features, setFeatures] = useState<RepoFeature[]>([]);
     const [selectedFeature, setSelectedFeature] = useState('');
     const [selectedFunction, setSelectedFunction] = useState('');
     const [selectedTypes, setSelectedTypes] = useState<ArtifactType[]>([]);
@@ -26,22 +27,31 @@ export function GenerateModal({ projectId, onClose, onComplete }: GenerateModalP
     const [error, setError] = useState('');
     const [providerLabel, setProviderLabel] = useState('');
 
-    useEffect(() => {
-        load();
-    }, [projectId]);
+    const projectQuery = useProject(projectId);
+    const featuresQuery = useFeatures(projectId);
 
-    const load = async () => {
-        const p = await getProject(projectId);
-        setProject(p);
-        const f = await getFeatures(projectId);
-        setFeatures(f);
-        if (f.length > 0) {
-            setSelectedFeature(f[0].id);
-            if (f[0].functions?.length) setSelectedFunction(f[0].functions[0].id);
+    const project = projectQuery.data ?? null;
+    const features = featuresQuery.data ?? [];
+
+    useEffect(() => {
+        if (features.length === 0) {
+            setSelectedFeature('');
+            setSelectedFunction('');
+            return;
         }
-        const prov = await detectProvider();
-        setProviderLabel(prov?.label || 'None');
-    };
+
+        setSelectedFeature(prev => (prev && features.some(f => f.id === prev) ? prev : features[0].id));
+        setSelectedFunction(prev => {
+            if (prev && features.some(f => (f.functions || []).some(fn => fn.id === prev))) {
+                return prev;
+            }
+            return features[0].functions?.[0]?.id || '';
+        });
+    }, [features]);
+
+    useEffect(() => {
+        detectProvider().then((prov) => setProviderLabel(prov?.label || 'None'));
+    }, []);
 
     const currentFunctions = features.find(f => f.id === selectedFeature)?.functions || [];
 

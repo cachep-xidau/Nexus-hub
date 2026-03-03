@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
-    Plug, Plus, Trash2, RefreshCw, Check, AlertCircle, Loader2,
+    Plug, Plus, Trash2, RefreshCw, Check, Loader2,
     Globe, FileText, Figma, Database, X, Link,
 } from 'lucide-react';
 import {
-    getMcpConnections, createMcpConnection, updateMcpConnection, deleteMcpConnection,
+    useMcpConnections,
+    useCreateMcpConnection,
+    useUpdateMcpConnection,
+    useDeleteMcpConnection,
     type McpConnection,
-} from '../../lib/repo-db';
+} from '../../lib/hooks/use-repo-api';
 
 const MCP_TYPES = [
     { type: 'confluence', name: 'Confluence', icon: FileText, desc: 'Import pages and spaces' },
@@ -26,29 +29,27 @@ interface ConnectionsTabProps {
 }
 
 export function ConnectionsTab({ projectId }: ConnectionsTabProps) {
-    const [connections, setConnections] = useState<McpConnection[]>([]);
-    const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
 
-    useEffect(() => { load(); }, [projectId]);
+    const connectionsQuery = useMcpConnections(projectId);
+    const createConnectionMutation = useCreateMcpConnection();
+    const updateConnectionMutation = useUpdateMcpConnection();
+    const deleteConnectionMutation = useDeleteMcpConnection();
 
-    const load = async () => {
-        setLoading(true);
-        const data = await getMcpConnections(projectId);
-        setConnections(data);
-        setLoading(false);
-    };
+    const connections = connectionsQuery.data ?? [];
+    const loading = connectionsQuery.isLoading;
 
     const handleDelete = async (id: string) => {
         if (!confirm('Remove this connection?')) return;
-        await deleteMcpConnection(id);
-        await load();
+        await deleteConnectionMutation.mutateAsync(id);
     };
 
     const handleToggle = async (conn: McpConnection) => {
         const newStatus = conn.status === 'connected' ? 'disconnected' : 'connected';
-        await updateMcpConnection(conn.id, { status: newStatus });
-        await load();
+        await updateConnectionMutation.mutateAsync({
+            id: conn.id,
+            data: { status: newStatus },
+        });
     };
 
     if (loading) {
@@ -128,7 +129,13 @@ export function ConnectionsTab({ projectId }: ConnectionsTabProps) {
 
             {/* Add Connection Modal */}
             {showModal && (
-                <ConnectModal projectId={projectId} onClose={() => setShowModal(false)} onCreated={load} />
+                <ConnectModal
+                    projectId={projectId}
+                    onClose={() => setShowModal(false)}
+                    createConnection={async (data) => {
+                        await createConnectionMutation.mutateAsync(data);
+                    }}
+                />
             )}
         </div>
     );
@@ -138,10 +145,15 @@ export function ConnectionsTab({ projectId }: ConnectionsTabProps) {
 interface ConnectModalProps {
     projectId: string;
     onClose: () => void;
-    onCreated: () => void;
+    createConnection: (data: {
+        projectId: string;
+        name: string;
+        type: string;
+        config: string;
+    }) => Promise<void>;
 }
 
-function ConnectModal({ projectId, onClose, onCreated }: ConnectModalProps) {
+function ConnectModal({ projectId, onClose, createConnection }: ConnectModalProps) {
     const [selectedType, setSelectedType] = useState('');
     const [name, setName] = useState('');
     const [configUrl, setConfigUrl] = useState('');
@@ -161,8 +173,12 @@ function ConnectModal({ projectId, onClose, onCreated }: ConnectModalProps) {
                 type: selectedType,
             });
 
-            await createMcpConnection(projectId, name.trim(), selectedType, config);
-            onCreated();
+            await createConnection({
+                projectId,
+                name: name.trim(),
+                type: selectedType,
+                config,
+            });
             onClose();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create connection');
