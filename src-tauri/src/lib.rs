@@ -239,6 +239,25 @@ pub fn run() {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 7,
+            description: "create_repo_prototypes_table",
+            sql: "
+                CREATE TABLE IF NOT EXISTS repo_prototypes (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    status TEXT DEFAULT 'stopped',
+                    port INTEGER,
+                    pid INTEGER,
+                    files_json TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES repo_projects(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_prototypes_project ON repo_prototypes(project_id);
+            ",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -249,6 +268,8 @@ pub fn run() {
         )
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(db::get_connection_pool())
         .invoke_handler(tauri::generate_handler![
             db::db_connect,

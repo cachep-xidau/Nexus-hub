@@ -121,16 +121,19 @@ impl DatabaseConnection for PostgresConnection {
 
     fn get_tables(&self) -> Result<Vec<TableInfo>, String> {
         self.query(
-            "SELECT table_name FROM information_schema.tables \
-             WHERE table_schema = 'public' AND table_type = 'BASE TABLE' \
-             ORDER BY table_name"
+            "SELECT table_schema, table_name \
+             FROM information_schema.tables \
+             WHERE table_type = 'BASE TABLE' \
+               AND table_schema NOT IN ('pg_catalog', 'information_schema') \
+             ORDER BY table_schema, table_name"
         ).map(|r| {
             r.rows.iter()
                 .filter_map(|row| {
-                    let name = row.get(0)?.clone().unwrap_or_default();
+                    let schema = row.get(0)?.clone().unwrap_or_default();
+                    let table_name = row.get(1)?.clone().unwrap_or_default();
                     Some(TableInfo {
-                        name,
-                        schema: Some("public".to_string()),
+                        name: format!("{}.{}", schema, table_name),
+                        schema: Some(schema),
                         row_count: None,
                     })
                 })
@@ -139,12 +142,19 @@ impl DatabaseConnection for PostgresConnection {
     }
 
     fn get_columns(&self, table: &str) -> Result<Vec<ColumnInfo>, String> {
+        let (schema_name, table_name) = match table.split_once('.') {
+            Some((schema, name)) => (schema.to_string(), name.to_string()),
+            None => ("public".to_string(), table.to_string()),
+        };
+        let safe_schema = schema_name.replace('\'', "''");
+        let safe_table = table_name.replace('\'', "''");
         let sql = format!(
             "SELECT column_name, data_type, is_nullable, column_default \
              FROM information_schema.columns \
-             WHERE table_schema = 'public' AND table_name = '{}' \
+             WHERE table_schema = '{}' AND table_name = '{}' \
              ORDER BY ordinal_position",
-            table
+            safe_schema,
+            safe_table
         );
         self.query(&sql).map(|r| {
             r.rows.iter()

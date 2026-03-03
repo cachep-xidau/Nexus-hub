@@ -19,10 +19,12 @@ pub fn db_connect(
     pool: State<ConnectionPool>,
 ) -> Result<ConnectionInfo, String> {
     let conn = create_connection(&config)?;
-    let info = conn.info();
+    let mut info = conn.info();
+    // Keep a stable ID across frontend saved config and runtime pool lookup.
+    info.id = config.id.clone();
 
     let mut pool = pool.lock().map_err(|_| "Lock error")?;
-    pool.insert(config.id.clone(), conn);
+    pool.insert(info.id.clone(), conn);
 
     Ok(info)
 }
