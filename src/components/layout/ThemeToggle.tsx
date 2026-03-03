@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { Sun, Moon } from 'lucide-react';
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('nexus-theme');
+    return saved === 'light' || saved === 'dark' ? saved : 'dark';
+  });
 
   useEffect(() => {
-    const saved = localStorage.getItem('nexus-theme') as 'light' | 'dark' | null;
-    const initial = saved || 'dark';
-    setTheme(initial);
-    document.documentElement.setAttribute('data-theme', initial);
-  }, []);
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   const toggle = () => {
     const next = theme === 'dark' ? 'light' : 'dark';
@@ -19,9 +19,9 @@ export function ThemeToggle() {
   };
 
   return (
-    <button className="nav-item" onClick={toggle} style={{ cursor: 'pointer' }}>
+    <button type="button" className="nav-item" onClick={toggle} style={{ cursor: 'pointer' }}>
       {theme === 'dark' ? <Sun className="icon" size={20} /> : <Moon className="icon" size={20} />}
-      {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+      <span className="nav-label">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
     </button>
   );
 }

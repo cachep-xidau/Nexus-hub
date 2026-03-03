@@ -96,14 +96,9 @@ interface GuideSectionProps {
 }
 
 export function GuideSection({ projectId, hasPrd, hasFeatures, hasArtifacts, hasConnections, onNavigateTab }: GuideSectionProps) {
-    const [hidden, setHidden] = useState(false);
+    const [dismissed, setDismissed] = useState(false);
     const [selectedGuide, setSelectedGuide] = useState<GuideKey | null>(null);
-
-    // Check localStorage on mount
-    useEffect(() => {
-        const key = `guide-hidden-${projectId}`;
-        if (localStorage.getItem(key) === 'true') setHidden(true);
-    }, [projectId]);
+    const hidden = dismissed || localStorage.getItem(`guide-hidden-${projectId}`) === 'true';
 
     // Escape key closes slider
     useEffect(() => {
@@ -115,7 +110,7 @@ export function GuideSection({ projectId, hasPrd, hasFeatures, hasArtifacts, has
 
     const handleDismiss = () => {
         localStorage.setItem(`guide-hidden-${projectId}`, 'true');
-        setHidden(true);
+        setDismissed(true);
     };
 
     if (hidden) return null;
@@ -125,7 +120,7 @@ export function GuideSection({ projectId, hasPrd, hasFeatures, hasArtifacts, has
         { key: 'generate', icon: Sparkles, title: 'Generate Artifacts', desc: 'Tạo User Stories, SRS, ERD...', done: hasArtifacts },
         { key: 'connect', icon: Plug, title: 'Kết nối Data Sources', desc: 'Figma, Confluence, Notion', done: hasConnections },
         { key: 'chat', icon: MessageSquare, title: 'Chat AI về PRD', desc: 'Tạo/chỉnh sửa PRD với AI', done: false },
-        { key: 'analysis', icon: Search, title: 'Phân tích & Nghiên cứu', desc: '5 loại Analysis BMAD', done: false },
+        { key: 'analysis', icon: Search, title: 'Phân tích & Nghiên cứu', desc: '5 loại Analysis BMAD', done: hasFeatures },
     ];
 
     const completedCount = guideCards.filter(c => c.done).length;

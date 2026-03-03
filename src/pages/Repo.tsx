@@ -1,10 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '../components/layout/Header';
 import {
     FolderOpen, Plus, MoreHorizontal, Loader2, X, Check, AlertCircle,
 } from 'lucide-react';
-import { getProjects, createProject, deleteProject, type RepoProject } from '../lib/repo-db';
+import {
+    useProjects,
+    useCreateProject,
+    useDeleteProject,
+    type RepoProject,
+} from '../lib/hooks/use-repo-api';
 
 function timeAgo(ts: number): string {
     const diff = Date.now() - ts;
@@ -20,20 +25,33 @@ function timeAgo(ts: number): string {
 function ProjectCard({ project, onDelete }: { project: RepoProject; onDelete: (id: string) => void }) {
     const navigate = useNavigate();
     const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
     const features = project._count?.features ?? 0;
     const artifacts = project._count?.artifacts ?? 0;
     const connections = project._count?.connections ?? 0;
 
+    // Close dropdown on click outside
+    useEffect(() => {
+        if (!menuOpen) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [menuOpen]);
+
     return (
         <div className="repo-card" onClick={() => navigate(`/repo/${project.id}`)}>
             {/* Menu */}
-            <div className="repo-card-menu">
+            <div className="repo-card-menu" ref={menuRef}>
                 <button onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }} className="icon-btn-subtle">
                     <MoreHorizontal size={16} />
                 </button>
                 {menuOpen && (
                     <div className="repo-card-dropdown" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => navigate(`/repo/${project.id}`)}>Open Project</button>
+                        <button onClick={() => { navigate(`/repo/${project.id}`); setMenuOpen(false); }}>Open Project</button>
                         <button onClick={() => { onDelete(project.id); setMenuOpen(false); }}
                             style={{ color: 'var(--error)' }}>Delete</button>
                     </div>
@@ -64,55 +82,56 @@ function ProjectCard({ project, onDelete }: { project: RepoProject; onDelete: (i
 
 export function Repo() {
     const navigate = useNavigate();
-    const [projects, setProjects] = useState<RepoProject[]>([]);
-    const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
     // Create modal
     const [showCreate, setShowCreate] = useState(false);
     const [newName, setNewName] = useState('');
     const [newDesc, setNewDesc] = useState('');
-    const [creating, setCreating] = useState(false);
 
-    const loadProjects = async () => {
-        try {
-            const data = await getProjects();
-            setProjects(data);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load projects');
-        } finally {
-            setLoading(false);
+    const projectsQuery = useProjects();
+    const createProjectMutation = useCreateProject();
+    const deleteProjectMutation = useDeleteProject();
+
+    const projects = projectsQuery.data ?? [];
+    const loading = projectsQuery.isLoading;
+    const creating = createProjectMutation.isPending;
+
+    useEffect(() => {
+        if (projectsQuery.error) {
+            const message = projectsQuery.error instanceof Error
+                ? projectsQuery.error.message
+                : 'Failed to load projects';
+            setError(message);
         }
-    };
-
-    useEffect(() => { loadProjects(); }, []);
+    }, [projectsQuery.error]);
 
     const handleCreate = async () => {
         if (!newName.trim() || creating) return;
-        setCreating(true);
+        setError('');
         try {
-            const id = await createProject(newName.trim(), newDesc.trim() || undefined);
-            setNewName(''); setNewDesc(''); setShowCreate(false);
-            navigate(`/repo/${id}`);
+            const created = await createProjectMutation.mutateAsync({
+                name: newName.trim(),
+                description: newDesc.trim() || undefined,
+            });
+            setNewName('');
+            setNewDesc('');
+            setShowCreate(false);
+            navigate(`/repo/${created.id}`);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create project');
-        } finally {
-            setCreating(false);
         }
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm('Delete this project and all its data?')) return;
+        setError('');
         try {
-            await deleteProject(id);
-            setProjects((prev) => prev.filter(p => p.id !== id));
+            await deleteProjectMutation.mutateAsync(id);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to delete project');
         }
     };
-
-    const activeProjects = projects.filter(p => (p._count?.artifacts ?? 0) >= 1);
-    const newProjects = projects.filter(p => (p._count?.artifacts ?? 0) === 0);
 
     return (
         <>
