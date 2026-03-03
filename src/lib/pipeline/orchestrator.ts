@@ -1,9 +1,8 @@
-// Pipeline orchestrator for artifact generation
-// Adapted from ba-kit — runs locally using existing AI providers
+// Legacy pipeline adapter for artifact generation.
+// Kept for compatibility with GenerateModal.
 
-import { generateCompletion } from '../ai';
-import { createArtifact } from '../repo-db';
-import { TEMPLATES, type ArtifactType } from './templates';
+import type { ArtifactType } from './templates';
+import { runArtifactPipeline } from './artifact-orchestrator';
 
 export interface GenerationResult {
     type: ArtifactType;
@@ -18,10 +17,7 @@ export interface PipelineResult {
     status: 'running' | 'completed' | 'failed';
 }
 
-/**
- * Run the artifact generation pipeline.
- * Generates artifacts sequentially — ERD results feed into SQL generation.
- */
+// Legacy wrapper keeping the older runPipeline signature used by GenerateModal.
 export async function runPipeline(
     functionId: string,
     projectId: string,
@@ -29,87 +25,28 @@ export async function runPipeline(
     prdContent: string,
     onProgress?: (progress: number, current: ArtifactType) => void,
 ): Promise<PipelineResult> {
-    const result: PipelineResult = {
-        artifacts: [],
-        progress: 0,
-        status: 'running',
-    };
-
-    let erdContent: string | undefined;
-    const total = artifactTypes.length;
-
-    for (let i = 0; i < total; i++) {
-        const type = artifactTypes[i];
-        onProgress?.(Math.round((i / total) * 100), type);
-
-        try {
-            const template = TEMPLATES[type];
-
-            // For SQL, use ERD content as context if available
-            const context = type === 'sql' && erdContent ? erdContent : undefined;
-            const prompt = template.prompt(prdContent, context);
-
-            // Call AI provider
-            const content = await generateCompletion(template.system, prompt);
-
-            // Add traceability header
-            const traced = addTraceability(content, type, projectId);
-
-            // Save to database
-            const id = await createArtifact({
-                type,
-                title: getDefaultTitle(type),
-                content: traced,
-                functionId,
-                projectId,
-            });
-
-            // Cache ERD for SQL generation
-            if (type === 'erd') {
-                erdContent = content;
-            }
-
-            result.artifacts.push({ type, id, status: 'success' });
-        } catch (err) {
-            result.artifacts.push({
-                type,
-                id: '',
-                status: 'failed',
-                error: err instanceof Error ? err.message : String(err),
-            });
-        }
-
-        result.progress = Math.round(((i + 1) / total) * 100);
+    if (artifactTypes.length === 0) {
+        return {
+            artifacts: [],
+            progress: 100,
+            status: 'completed',
+        };
     }
 
-    result.status = result.artifacts.some(a => a.status === 'failed') ? 'failed' : 'completed';
-    onProgress?.(100, artifactTypes[artifactTypes.length - 1]);
+    const result = await runArtifactPipeline(
+        projectId,
+        functionId,
+        artifactTypes,
+        prdContent,
+        (progress) => {
+            const pct = Math.round((progress.current / progress.total) * 100);
+            onProgress?.(pct, progress.currentType);
+        },
+    );
 
-    return result;
-}
-
-function addTraceability(content: string, type: ArtifactType, projectId: string): string {
-    return `---
-artifact_type: ${type}
-project_id: ${projectId}
-generated_at: ${new Date().toISOString()}
----
-
-${content}`;
-}
-
-function getDefaultTitle(type: ArtifactType): string {
-    const titles: Record<string, string> = {
-        'user-story': 'User Stories',
-        'function-list': 'Function List',
-        'srs': 'Software Requirements Specification',
-        'erd': 'Entity-Relationship Diagram',
-        'sql': 'SQL Scripts',
-        'flowchart': 'Process Flowchart',
-        'sequence-diagram': 'Sequence Diagram',
-        'use-case-diagram': 'Use Case Diagram',
-        'activity-diagram': 'Activity Diagram',
-        'screen-description': 'Screen Description',
+    return {
+        artifacts: result.results,
+        progress: 100,
+        status: result.status === 'completed' ? 'completed' : 'failed',
     };
-    return titles[type] || type;
 }
