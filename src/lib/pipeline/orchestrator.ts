@@ -1,5 +1,5 @@
-// Legacy pipeline adapter for artifact generation.
-// Kept for compatibility with GenerateModal.
+// Legacy pipeline adapter retained for backwards compatibility.
+// Consumers should migrate to runArtifactPipeline from artifact-orchestrator.ts.
 
 import type { ArtifactType } from './templates';
 import { runArtifactPipeline } from './artifact-orchestrator';
@@ -17,7 +17,7 @@ export interface PipelineResult {
     status: 'running' | 'completed' | 'failed';
 }
 
-// Legacy wrapper keeping the older runPipeline signature used by GenerateModal.
+// Legacy wrapper keeping the older runPipeline signature.
 export async function runPipeline(
     functionId: string,
     projectId: string,
