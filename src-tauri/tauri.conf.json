@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://slack.com https://files.slack.com https://gmail.googleapis.com https://oauth2.googleapis.com https://api.telegram.org https://drive.google.com https://docs.google.com https://www.googleapis.com; worker-src 'self' blob:"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:* https://api.openai.com https://slack.com https://files.slack.com https://gmail.googleapis.com https://oauth2.googleapis.com https://api.telegram.org https://drive.google.com https://docs.google.com https://www.googleapis.com; frame-src 'self' http://localhost:*; worker-src 'self' blob:"
     }
   },
   "bundle": {
@@ -48,6 +48,9 @@
       "preload": [
         "sqlite:nexus.db"
       ]
+    },
+    "shell": {
+      "open": true
     }
   }
 }
