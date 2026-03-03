@@ -1,4 +1,4 @@
-import { Database, Server, FileCode2, Trash2, Plug } from 'lucide-react';
+import { Database, Server, FileCode2, Trash2, Plug, Pencil } from 'lucide-react';
 import type { ConnectionConfig, ConnectionInfo } from '../../lib/tableplus-db';
 
 interface Props {
@@ -6,6 +6,7 @@ interface Props {
   activeConnection: ConnectionInfo | null;
   onConnect: (conn: ConnectionConfig) => void;
   onDisconnect: () => void;
+  onEdit: (conn: ConnectionConfig) => void;
   onDelete: (id: string) => void;
 }
 
@@ -26,6 +27,7 @@ export function ConnectionList({
   activeConnection,
   onConnect,
   onDisconnect,
+  onEdit,
   onDelete,
 }: Props) {
   return (
@@ -47,8 +49,12 @@ export function ConnectionList({
             <div className="tp-connection-actions">
               {isActive ? (
                 <button
+                  type="button"
                   className="btn-icon-sm"
-                  onClick={onDisconnect}
+                  onClick={e => {
+                    e.stopPropagation();
+                    onDisconnect();
+                  }}
                   title="Disconnect"
                   style={{ color: 'var(--success)' }}
                 >
@@ -56,16 +62,35 @@ export function ConnectionList({
                 </button>
               ) : (
                 <button
+                  type="button"
                   className="btn-icon-sm"
-                  onClick={() => onConnect(conn)}
+                  onClick={e => {
+                    e.stopPropagation();
+                    onConnect(conn);
+                  }}
                   title="Connect"
                 >
                   <Plug size={14} />
                 </button>
               )}
               <button
+                type="button"
                 className="btn-icon-sm"
-                onClick={() => onDelete(conn.id)}
+                onClick={e => {
+                  e.stopPropagation();
+                  onEdit(conn);
+                }}
+                title="Edit"
+              >
+                <Pencil size={14} />
+              </button>
+              <button
+                type="button"
+                className="btn-icon-sm"
+                onClick={e => {
+                  e.stopPropagation();
+                  onDelete(conn.id);
+                }}
                 title="Delete"
                 style={{ color: 'var(--error)' }}
               >

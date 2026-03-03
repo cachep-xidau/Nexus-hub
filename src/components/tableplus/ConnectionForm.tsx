@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import type { ConnectionConfig, DatabaseType } from '../../lib/tableplus-db';
 
@@ -21,11 +21,22 @@ export function ConnectionForm({ onSave, onCancel, initial }: Props) {
   const [port, setPort] = useState(initial?.port || 5432);
   const [database, setDatabase] = useState(initial?.database || '');
   const [username, setUsername] = useState(initial?.username || '');
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(initial?.password || '');
   const [filePath, setFilePath] = useState(initial?.file_path || '');
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onCancel]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const finalPassword = dbType === 'Sqlite'
+      ? undefined
+      : ((password === '' && initial?.password) ? initial.password : password);
+
     onSave({
       id: initial?.id || crypto.randomUUID(),
       name,
@@ -34,136 +45,139 @@ export function ConnectionForm({ onSave, onCancel, initial }: Props) {
       port: dbType === 'Sqlite' ? undefined : port,
       database: dbType === 'Sqlite' ? undefined : database,
       username: dbType === 'Sqlite' ? undefined : username,
-      password: dbType === 'Sqlite' ? undefined : password,
+      password: finalPassword,
       file_path: dbType === 'Sqlite' ? filePath : undefined,
     });
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: 480 }}>
-        <div className="modal-header">
+    <>
+      <div className="tp-drawer-backdrop" onClick={onCancel} />
+      <div className="tp-drawer">
+        <div className="tp-drawer-header">
           <h2>{initial ? 'Edit' : 'New'} Connection</h2>
-          <button className="btn-icon" onClick={onCancel}>
+          <button className="tp-drawer-close" onClick={onCancel}>
             <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Connection Name</label>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="My Database"
-              required
-              className="input"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Database Type</label>
-            <select
-              value={dbType}
-              onChange={e => {
-                const t = e.target.value as DatabaseType;
-                setDbType(t);
-                if (t !== 'Sqlite') {
-                  setHost(DB_DEFAULTS[t].host);
-                  setPort(DB_DEFAULTS[t].port);
-                }
-              }}
-              className="input"
-            >
-              <option value="Sqlite">SQLite</option>
-              <option value="Postgres">PostgreSQL</option>
-              <option value="Mysql">MySQL</option>
-            </select>
-          </div>
-
-          {dbType === 'Sqlite' ? (
+        <div className="tp-drawer-body">
+          <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label>File Path</label>
+              <label>Connection Name</label>
               <input
-                value={filePath}
-                onChange={e => setFilePath(e.target.value)}
-                placeholder="/path/to/database.db"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="My Database"
                 required
                 className="input"
               />
-              <small style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-                Path to SQLite database file (will be created if not exists)
-              </small>
             </div>
-          ) : (
-            <>
-              <div className="form-row" style={{ display: 'flex', gap: 12 }}>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label>Host</label>
+
+            <div className="form-group">
+              <label>Database Type</label>
+              <select
+                value={dbType}
+                onChange={e => {
+                  const t = e.target.value as DatabaseType;
+                  setDbType(t);
+                  if (t !== 'Sqlite') {
+                    setHost(DB_DEFAULTS[t].host);
+                    setPort(DB_DEFAULTS[t].port);
+                  }
+                }}
+                className="input"
+              >
+                <option value="Sqlite">SQLite</option>
+                <option value="Postgres">PostgreSQL</option>
+                <option value="Mysql">MySQL</option>
+              </select>
+            </div>
+
+            {dbType === 'Sqlite' ? (
+              <div className="form-group">
+                <label>File Path</label>
+                <input
+                  value={filePath}
+                  onChange={e => setFilePath(e.target.value)}
+                  placeholder="/path/to/database.db"
+                  required
+                  className="input"
+                />
+                <small style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                  Path to SQLite database file (will be created if not exists)
+                </small>
+              </div>
+            ) : (
+              <>
+                <div className="form-row" style={{ display: 'flex', gap: 12 }}>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label>Host</label>
+                    <input
+                      value={host}
+                      onChange={e => setHost(e.target.value)}
+                      placeholder="localhost"
+                      required
+                      className="input"
+                    />
+                  </div>
+                  <div className="form-group" style={{ width: 100 }}>
+                    <label>Port</label>
+                    <input
+                      type="number"
+                      value={port}
+                      onChange={e => setPort(Number(e.target.value))}
+                      required
+                      className="input"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Database</label>
                   <input
-                    value={host}
-                    onChange={e => setHost(e.target.value)}
-                    placeholder="localhost"
+                    value={database}
+                    onChange={e => setDatabase(e.target.value)}
+                    placeholder="mydb"
                     required
                     className="input"
                   />
                 </div>
-                <div className="form-group" style={{ width: 100 }}>
-                  <label>Port</label>
+
+                <div className="form-group">
+                  <label>Username</label>
                   <input
-                    type="number"
-                    value={port}
-                    onChange={e => setPort(Number(e.target.value))}
+                    value={username}
+                    onChange={e => setUsername(e.target.value)}
+                    placeholder="postgres"
                     required
                     className="input"
                   />
                 </div>
-              </div>
 
-              <div className="form-group">
-                <label>Database</label>
-                <input
-                  value={database}
-                  onChange={e => setDatabase(e.target.value)}
-                  placeholder="mydb"
-                  required
-                  className="input"
-                />
-              </div>
+                <div className="form-group">
+                  <label>Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="input"
+                  />
+                </div>
+              </>
+            )}
 
-              <div className="form-group">
-                <label>Username</label>
-                <input
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  placeholder="postgres"
-                  required
-                  className="input"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className="input"
-                />
-              </div>
-            </>
-          )}
-
-          <div className="form-actions" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
-            <button type="button" className="btn btn-secondary" onClick={onCancel}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary">
-              {initial ? 'Update' : 'Create'}
-            </button>
-          </div>
-        </form>
+            <div className="form-actions" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button type="button" className="btn btn-secondary" onClick={onCancel}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary">
+                {initial ? 'Update' : 'Create'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

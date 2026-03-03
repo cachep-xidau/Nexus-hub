@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Database, Play, RefreshCw, Table, ChevronRight, ChevronDown, Key, Hash, Columns, Code, Edit3, Sparkles } from 'lucide-react';
+import { Plus, Database, Play, RefreshCw, Table, ChevronRight, ChevronDown, Key, Hash, Columns, Code, Edit3 } from 'lucide-react';
 import { ConnectionForm } from '../components/tableplus/ConnectionForm';
 import { ConnectionList } from '../components/tableplus/ConnectionList';
 import { DataGrid } from '../components/tableplus/DataGrid';
@@ -23,6 +23,7 @@ import {
 type TabType = 'query' | 'data';
 
 export function TablePlus() {
+  const QUERY_PAGE_SIZE = 100;
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
   const [activeConnection, setActiveConnection] = useState<ConnectionInfo | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -43,6 +44,11 @@ export function TablePlus() {
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMoreQuery, setLoadingMoreQuery] = useState(false);
+  const [queryBaseSql, setQueryBaseSql] = useState<string | null>(null);
+  const [queryOffset, setQueryOffset] = useState(0);
+  const [queryHasMore, setQueryHasMore] = useState(false);
+  const [queryAutoLimited, setQueryAutoLimited] = useState(false);
 
   // Load saved connections
   useEffect(() => {
@@ -54,16 +60,24 @@ export function TablePlus() {
     try {
       const info = await dbConnect(conn);
       setActiveConnection(info);
-
-      // Load tables
-      const tbls = await dbGetTables(info.id);
-      setTables(tbls);
       setExpandedTables(new Set());
       setColumns({});
       setSelectedTable(null);
       setQueryResult(null);
+      setQueryError(null);
+
+      // Load tables (non-blocking for connection state)
+      try {
+        const tbls = await dbGetTables(info.id);
+        setTables(tbls);
+      } catch (tableErr) {
+        setTables([]);
+        const message = tableErr instanceof Error ? tableErr.message : String(tableErr);
+        alert(`Connected but failed to load tables: ${message}`);
+      }
     } catch (e) {
-      alert(`Connection failed: ${e}`);
+      const message = e instanceof Error ? e.message : String(e);
+      alert(`Connection failed: ${message}`);
     }
   };
 
@@ -81,9 +95,26 @@ export function TablePlus() {
 
   // Delete connection
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this connection?')) return;
-    await deleteConnection(id);
-    setConnections(prev => prev.filter(c => c.id !== id));
+    try {
+      if (activeConnection?.id === id) {
+        await dbDisconnect(id);
+        setActiveConnection(null);
+        setTables([]);
+        setColumns({});
+        setSelectedTable(null);
+        setQueryResult(null);
+      }
+      await deleteConnection(id);
+      setConnections(await getSavedConnections());
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      alert(`Delete failed: ${message}`);
+    }
+  };
+
+  const handleEdit = (conn: ConnectionConfig) => {
+    setEditingConn(conn);
+    setShowForm(true);
   };
 
   // Save connection
@@ -126,13 +157,58 @@ export function TablePlus() {
     setLoading(true);
     setQueryError(null);
     try {
-      const result = await dbQuery(activeConnection.id, sql);
-      setQueryResult(result);
+      const normalizedSql = sql.trim().replace(/;+\s*$/, '');
+      const isSelectLike = /^\s*(select|with)\b/i.test(normalizedSql);
+      const hasExplicitLimit = /\blimit\s+\d+\b/i.test(normalizedSql);
+
+      if (isSelectLike && !hasExplicitLimit) {
+        const pagedSql = `SELECT * FROM (${normalizedSql}) AS _nexus_q LIMIT ${QUERY_PAGE_SIZE} OFFSET 0`;
+        const result = await dbQuery(activeConnection.id, pagedSql);
+        setQueryResult(result);
+        setQueryBaseSql(normalizedSql);
+        setQueryOffset(result.rows.length);
+        setQueryHasMore(result.rows.length === QUERY_PAGE_SIZE);
+        setQueryAutoLimited(true);
+      } else {
+        const result = await dbQuery(activeConnection.id, sql);
+        setQueryResult(result);
+        setQueryBaseSql(null);
+        setQueryOffset(0);
+        setQueryHasMore(false);
+        setQueryAutoLimited(false);
+      }
     } catch (e) {
       setQueryError(e instanceof Error ? e.message : String(e));
       setQueryResult(null);
+      setQueryBaseSql(null);
+      setQueryOffset(0);
+      setQueryHasMore(false);
+      setQueryAutoLimited(false);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMoreQueryRows = async () => {
+    if (!activeConnection || !queryBaseSql || loadingMoreQuery || !queryHasMore) return;
+    setLoadingMoreQuery(true);
+    try {
+      const pagedSql = `SELECT * FROM (${queryBaseSql}) AS _nexus_q LIMIT ${QUERY_PAGE_SIZE} OFFSET ${queryOffset}`;
+      const result = await dbQuery(activeConnection.id, pagedSql);
+      setQueryResult(prev => {
+        if (!prev) return result;
+        return {
+          ...result,
+          rows: [...prev.rows, ...result.rows],
+          row_count: prev.rows.length + result.rows.length,
+        };
+      });
+      setQueryOffset(prev => prev + result.rows.length);
+      setQueryHasMore(result.rows.length === QUERY_PAGE_SIZE);
+    } catch (e) {
+      setQueryError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingMoreQuery(false);
     }
   };
 
@@ -173,6 +249,7 @@ export function TablePlus() {
           activeConnection={activeConnection}
           onConnect={handleConnect}
           onDisconnect={handleDisconnect}
+          onEdit={handleEdit}
           onDelete={handleDelete}
         />
       </div>
@@ -301,6 +378,7 @@ export function TablePlus() {
                 <>
                   <div className="tp-results-meta">
                     {queryResult.row_count} rows • {queryResult.execution_time_ms}ms
+                    {queryAutoLimited && ' • auto limited to 100 rows/page'}
                   </div>
 
                   <div className="tp-results-grid-wrapper">
@@ -330,6 +408,20 @@ export function TablePlus() {
                         Showing first 100 of {queryResult.row_count} rows
                       </div>
                     )}
+                    {queryAutoLimited && (
+                      <div className="tp-results-truncated" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <span>{queryHasMore ? 'Scroll-safe mode: fetching 100 rows each time' : 'No more rows'}</span>
+                        {queryHasMore && (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={loadMoreQueryRows}
+                            disabled={loadingMoreQuery}
+                          >
+                            {loadingMoreQuery ? 'Loading...' : 'Load 100 more'}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -350,6 +442,7 @@ export function TablePlus() {
             connId={activeConnection?.id || ''}
             tableName={selectedTable}
             columns={selectedTableColumns}
+            dbType={activeConnection?.db_type}
             refreshKey={dataRefreshKey}
           />
         )}

@@ -68,6 +68,32 @@ export async function dbExecute(connId: string, sql: string): Promise<ExecuteRes
   return invoke('db_execute', { connId, sql });
 }
 
+function sqlLiteral(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
+  if (typeof value === 'boolean') return value ? '1' : '0';
+  if (value instanceof Date) return `'${value.toISOString().replace(/'/g, "''")}'`;
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function formatSqlWithParams(sql: string, params: unknown[]): string {
+  let index = 0;
+  return sql.replace(/\?/g, () => {
+    if (index >= params.length) return '?';
+    const val = params[index++];
+    return sqlLiteral(val);
+  });
+}
+
+export async function dbExecuteWithParams(
+  connId: string,
+  sql: string,
+  params: unknown[] = []
+): Promise<ExecuteResult> {
+  const finalSql = params.length > 0 ? formatSqlWithParams(sql, params) : sql;
+  return invoke('db_execute', { connId, sql: finalSql });
+}
+
 export async function dbGetTables(connId: string): Promise<TableInfo[]> {
   return invoke('db_get_tables', { connId });
 }
@@ -104,7 +130,18 @@ async function ensureTables() {
 export async function getSavedConnections(): Promise<ConnectionConfig[]> {
   await ensureTables();
   const db = await Database.load('sqlite:nexus.db');
-  const rows = await db.select<any[]>('SELECT * FROM tp_connections ORDER BY name');
+  type TpConnectionRow = {
+    id: string;
+    name: string;
+    db_type: DatabaseType;
+    host: string | null;
+    port: number | null;
+    database: string | null;
+    username: string | null;
+    password_enc: string | null;
+    file_path: string | null;
+  };
+  const rows = await db.select<TpConnectionRow[]>('SELECT * FROM tp_connections ORDER BY name');
   return rows.map(r => ({
     id: r.id,
     name: r.name,
@@ -132,6 +169,18 @@ export async function saveConnection(conn: ConnectionConfig): Promise<void> {
 }
 
 export async function deleteConnection(id: string): Promise<void> {
+  await ensureTables();
   const db = await Database.load('sqlite:nexus.db');
+  const before = await db.select<Array<{ c: number }>>(
+    'SELECT COUNT(*) as c FROM tp_connections WHERE id = ?',
+    [id],
+  );
   await db.execute('DELETE FROM tp_connections WHERE id = ?', [id]);
+  const after = await db.select<Array<{ c: number }>>(
+    'SELECT COUNT(*) as c FROM tp_connections WHERE id = ?',
+    [id],
+  );
+  if ((before[0]?.c ?? 0) > 0 && (after[0]?.c ?? 0) > 0) {
+    throw new Error('Delete did not remove the connection record.');
+  }
 }

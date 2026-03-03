@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Trash2, Save, X, RefreshCw } from 'lucide-react';
-import { dbQuery, dbExecute, type ColumnInfo } from '../../lib/tableplus-db';
+import { dbQuery, dbExecuteWithParams, type ColumnInfo, type DatabaseType } from '../../lib/tableplus-db';
 
 interface Props {
   connId: string;
   tableName: string | null;
   columns: ColumnInfo[];
+  dbType?: DatabaseType;
   refreshKey?: number;
 }
 
@@ -13,37 +14,73 @@ interface RowData {
   [key: string]: string | null;
 }
 
-export function DataGrid({ connId, tableName, columns, refreshKey }: Props) {
+export function DataGrid({ connId, tableName, columns, dbType, refreshKey }: Props) {
+  const PAGE_SIZE = 100;
   const [data, setData] = useState<RowData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [newRow, setNewRow] = useState<RowData | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
 
-  const loadData = useCallback(async () => {
+  const quoteIdentifier = useCallback((identifier: string) => {
+    const safeParts = identifier.split('.').map(part => part.trim()).filter(Boolean);
+    if (safeParts.length === 0) return identifier;
+    const quote = dbType === 'Mysql' ? '`' : '"';
+    const escapePattern = dbType === 'Mysql' ? /`/g : /"/g;
+    const escapeReplacement = dbType === 'Mysql' ? '``' : '""';
+    return safeParts.map(part => `${quote}${part.replace(escapePattern, escapeReplacement)}${quote}`).join('.');
+  }, [dbType]);
+
+  const quotedTableName = useMemo(() => (tableName ? quoteIdentifier(tableName) : ''), [tableName, quoteIdentifier]);
+
+  const mapRows = (cols: string[], rows: (string | null)[][]): RowData[] => rows.map(row => {
+    const obj: RowData = {};
+    cols.forEach((col, i) => {
+      obj[col] = row[i];
+    });
+    return obj;
+  });
+
+  const loadPage = useCallback(async (startOffset: number, append: boolean) => {
     if (!connId || !tableName) return;
-    setLoading(true);
+
+    if (append) setLoadingMore(true);
+    else setLoading(true);
+
     try {
-      const result = await dbQuery(connId, `SELECT * FROM "${tableName}" LIMIT 500`);
-      const rows = result.rows.map(row => {
-        const obj: RowData = {};
-        result.columns.forEach((col, i) => {
-          obj[col] = row[i];
-        });
-        return obj;
-      });
-      setData(rows);
+      const result = await dbQuery(
+        connId,
+        `SELECT * FROM ${quotedTableName} LIMIT ${PAGE_SIZE} OFFSET ${startOffset}`,
+      );
+      const rows = mapRows(result.columns, result.rows);
+      setData(prev => append ? [...prev, ...rows] : rows);
+      setOffset(startOffset + rows.length);
+      setHasMore(rows.length === PAGE_SIZE);
     } catch (e) {
       console.error('Load error:', e);
     } finally {
-      setLoading(false);
+      if (append) setLoadingMore(false);
+      else setLoading(false);
     }
-  }, [connId, tableName, refreshKey]);
+  }, [PAGE_SIZE, connId, quotedTableName, tableName]);
+
+  const loadData = useCallback(async () => {
+    setSelectedRows(new Set());
+    await loadPage(0, false);
+  }, [loadPage]);
+
+  const loadMore = useCallback(async () => {
+    if (loading || loadingMore || !hasMore) return;
+    await loadPage(offset, true);
+  }, [hasMore, loadPage, loading, loadingMore, offset]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    void loadData();
+  }, [loadData, refreshKey]);
 
   const pk = columns.find(c => c.primary_key);
 
@@ -71,18 +108,18 @@ export function DataGrid({ connId, tableName, columns, refreshKey }: Props) {
         const cols = Object.keys(newRow).filter(k => newRow[k] !== null && newRow[k] !== '');
         const vals = cols.map(k => newRow[k]);
         const placeholders = cols.map(() => '?').join(', ');
-        await dbExecute(
+        await dbExecuteWithParams(
           connId,
-          `INSERT INTO "${tableName}" (${cols.map(c => `"${c}"`).join(', ')}) VALUES (${placeholders})`,
+          `INSERT INTO ${quotedTableName} (${cols.map(c => quoteIdentifier(c)).join(', ')}) VALUES (${placeholders})`,
           vals
         );
         setNewRow(null);
       } else {
         // UPDATE
-        await dbExecute(
+        await dbExecuteWithParams(
           connId,
-          `UPDATE "${tableName}" SET "${editingCell.col}" = ? WHERE "${pk.name}" = ?`,
-          [editValue || null, pkValue]
+          `UPDATE ${quotedTableName} SET ${quoteIdentifier(editingCell.col)} = ? WHERE ${quoteIdentifier(pk.name)} = ?`,
+          [editValue, pkValue]
         );
       }
       await loadData();
@@ -100,9 +137,9 @@ export function DataGrid({ connId, tableName, columns, refreshKey }: Props) {
     try {
       for (const idx of selectedRows) {
         const pkValue = data[idx][pk.name];
-        await dbExecute(
+        await dbExecuteWithParams(
           connId,
-          `DELETE FROM "${tableName}" WHERE "${pk.name}" = ?`,
+          `DELETE FROM ${quotedTableName} WHERE ${quoteIdentifier(pk.name)} = ?`,
           [pkValue]
         );
       }
@@ -179,11 +216,19 @@ export function DataGrid({ connId, tableName, columns, refreshKey }: Props) {
             Delete ({selectedRows.size})
           </button>
         )}
-        <span className="tp-row-count">{data.length} rows</span>
+        <span className="tp-row-count">{data.length} rows loaded</span>
         {!pk && <span className="tp-no-pk">No primary key - editing disabled</span>}
       </div>
 
-      <div className="tp-datagrid-wrapper">
+      <div
+        className="tp-datagrid-wrapper"
+        onScroll={e => {
+          const target = e.currentTarget;
+          if (target.scrollTop + target.clientHeight >= target.scrollHeight - 80) {
+            void loadMore();
+          }
+        }}
+      >
         <table className="tp-datagrid-table">
           <thead>
             <tr>
@@ -243,6 +288,11 @@ export function DataGrid({ connId, tableName, columns, refreshKey }: Props) {
             ))}
           </tbody>
         </table>
+        {(loadingMore || hasMore) && (
+          <div className="tp-results-truncated" style={{ padding: '0.5rem 0.75rem' }}>
+            {loadingMore ? 'Loading 100 more rows...' : 'Scroll down to load 100 more rows'}
+          </div>
+        )}
       </div>
     </div>
   );
