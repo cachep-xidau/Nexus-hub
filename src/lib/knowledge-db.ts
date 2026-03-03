@@ -148,7 +148,7 @@ export async function createArticle(data: {
 
 export async function updateArticle(
   id: string,
-  data: { title?: string; content?: string; section?: string }
+  data: { title?: string; content?: string; section?: string; sort_order?: number }
 ): Promise<void> {
   const d = await getDb();
   const sets: string[] = [];
@@ -156,6 +156,7 @@ export async function updateArticle(
   if (data.title !== undefined) { sets.push('title = ?'); vals.push(data.title); }
   if (data.content !== undefined) { sets.push('content = ?'); vals.push(data.content); }
   if (data.section !== undefined) { sets.push('section = ?'); vals.push(data.section); }
+  if (data.sort_order !== undefined) { sets.push('sort_order = ?'); vals.push(data.sort_order); }
   sets.push('updated_at = ?'); vals.push(Date.now());
   vals.push(id);
   await d.execute(`UPDATE knowledge_articles SET ${sets.join(', ')} WHERE id = ?`, vals);

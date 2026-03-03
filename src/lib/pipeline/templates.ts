@@ -4,7 +4,7 @@
 export type ArtifactType =
     | 'user-story' | 'function-list' | 'srs' | 'erd' | 'sql'
     | 'flowchart' | 'sequence-diagram' | 'use-case-diagram'
-    | 'activity-diagram' | 'screen-description';
+    | 'activity-diagram' | 'screen-description' | 'prototype';
 
 interface TemplateEntry {
     system: string;
@@ -119,6 +119,59 @@ Data types: Text, Number, Password, Select, Toggle, Display, List, Date, Image.`
             return p;
         },
     },
+
+    'prototype': {
+        system: `You are an expert frontend developer and Business Systems Analyst creating interactive UI prototypes that PRECISELY reflect a Product Requirements Document (PRD).
+
+You MUST output ONLY a valid JSON object (no markdown, no code fences) with this exact structure:
+{
+  "files": {
+    "src/App.tsx": "<file content>",
+    "src/components/ComponentName.tsx": "<file content>",
+    "src/data/mockData.ts": "<file content>"
+  }
+}
+
+CRITICAL — PRD Analysis Process:
+1. READ the PRD thoroughly. Extract: project name, target users, core features, entities/data models, user flows.
+2. MAP each feature in the PRD to a distinct screen/page in the prototype.
+3. GENERATE mock data that uses the exact entity names, field names, and relationships from the PRD.
+4. BUILD navigation that mirrors the PRD's module/feature structure.
+5. DESIGN the UI to demonstrate each user story or functional requirement described in the PRD.
+
+Code Rules:
+- Use React + TypeScript.
+- Tailwind CSS classes (CDN already loaded in index.html) for ALL styling. Do NOT import any CSS framework or component library.
+- react-router-dom for multi-page navigation matching PRD feature areas.
+- Create realistic mock data in src/data/mockData.ts that reflects the PRD's domain (use entity names, field names, enums from the PRD).
+- Every screen must have: header with project name, sidebar/nav with all feature areas, main content area with realistic data.
+- Include interactive elements: search, filters, forms, modals, status badges, CRUD actions.
+- Use modern UI patterns: cards, tables, stats dashboards, empty states.
+- Make the UI responsive (mobile + desktop).
+- Write clean TypeScript that compiles without errors.
+- Keep total output under 12000 tokens.
+
+ALLOWED PACKAGES (these are the ONLY packages installed):
+- react, react-dom, react-router-dom, lucide-react, recharts
+
+FORBIDDEN — DO NOT import any of these (they are NOT installed and will crash the build):
+- antd, @ant-design/*, @mui/*, @chakra-ui/*, @mantine/*, @headlessui/*, framer-motion, styled-components, @emotion/*, bootstrap, semantic-ui-react
+- Build ALL UI components yourself using Tailwind CSS classes. No external component libraries.`,
+        prompt: (prd, ctx) => {
+            let p = `IMPORTANT: You must analyze the PRD below and create a prototype that DIRECTLY represents the features and data described in it. Do NOT generate a generic app — every screen, every piece of mock data, and every navigation item must come from the PRD.
+
+=== PRD CONTENT (analyze this carefully) ===
+${prd}
+=== END PRD ===`;
+            if (ctx) p += `\n\n=== ADDITIONAL CONTEXT (Figma/Design notes) ===\n${ctx}\n=== END CONTEXT ===`;
+            p += `\n\nNow generate the prototype JSON. Remember:
+1. Extract the project name, features, entities, and user roles from the PRD above.
+2. Create screens for each feature area mentioned in the PRD.
+3. Use the exact entity names and fields from the PRD for mock data.
+4. Output ONLY the JSON object, no markdown wrapping.`;
+            return p;
+        },
+    },
 };
 
 export const ARTIFACT_TYPE_OPTIONS: { value: ArtifactType; label: string }[] = [
@@ -132,4 +185,5 @@ export const ARTIFACT_TYPE_OPTIONS: { value: ArtifactType; label: string }[] = [
     { value: 'flowchart', label: 'Flowchart' },
     { value: 'sql', label: 'SQL' },
     { value: 'activity-diagram', label: 'Activity Diagram' },
+    { value: 'prototype', label: '🖥 Prototype' },
 ];

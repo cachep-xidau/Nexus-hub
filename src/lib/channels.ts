@@ -1,6 +1,8 @@
 // ── Channel Connector Types ─────────────────────────
 import { type FileAttachment, detectFileLinks, parseSlackFiles, type SlackFileObject } from './file-analysis';
 import { tauriFetch } from './tauri-fetch';
+import { getErrorMessage } from './error-utils';
+import { getGmailHeaderValue, parseFromHeader, type GmailPayload } from './gmail-message-utils';
 export interface ChannelMessage {
   id: string;
   channelType: 'slack' | 'gmail' | 'telegram';
@@ -38,10 +40,30 @@ interface SlackChannel {
   id: string;
   name?: string;
   is_im?: boolean;
+  is_member?: boolean;
   is_mpim?: boolean;
   is_channel?: boolean;
   is_group?: boolean;
   user?: string; // for IMs, the other user's ID
+}
+
+interface SlackApiResponse {
+  ok: boolean;
+  user_id?: string;
+  error?: string;
+  needed?: string;
+  channels?: SlackChannel[];
+  messages?: SlackMessage[];
+  response_metadata?: {
+    next_cursor?: string;
+  };
+  user?: {
+    name?: string;
+    real_name?: string;
+    profile?: {
+      display_name?: string;
+    };
+  };
 }
 
 export class SlackService {
@@ -58,7 +80,7 @@ export class SlackService {
   async init(): Promise<boolean> {
     try {
       const res = await this.api('auth.test');
-      if (res.ok) {
+      if (res.ok && res.user_id) {
         this.botUserId = res.user_id;
         return true;
       }
@@ -182,14 +204,14 @@ export class SlackService {
         logs.push(`📋 Raw response: ${JSON.stringify(rawRes).slice(0, 300)}`);
         return { messages: [], logs };
       }
-    } catch (e: any) {
-      logs.push(`❌ conversations.list exception: ${e.message}`);
+    } catch (e: unknown) {
+      logs.push(`❌ conversations.list exception: ${getErrorMessage(e)}`);
       return { messages: [], logs };
     }
     logs.push(`📂 ${channels.length} channels visible`);
 
     // Filter to channels bot is actually a member of
-    const memberChannels = channels.filter((c: any) => c.is_member || c.is_im);
+    const memberChannels = channels.filter((c) => c.is_member || c.is_im);
     logs.push(`👤 ${memberChannels.length} channels bot is member of`);
 
     if (memberChannels.length === 0) {
@@ -256,9 +278,9 @@ export class SlackService {
             attachments: attachments.length > 0 ? attachments : undefined,
           });
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         const chName = channel.is_im ? `DM(${channel.user})` : `#${channel.name || channel.id}`;
-        logs.push(`  ❌ ${chName}: ${e.message}`);
+        logs.push(`  ❌ ${chName}: ${getErrorMessage(e)}`);
       }
       channelIdx++;
     }
@@ -338,7 +360,6 @@ export class SlackService {
   async fetchThread(channelId: string, threadTs: string): Promise<ChannelMessage[]> {
     const replies = await this.getThreadReplies(channelId, threadTs);
     const messages: ChannelMessage[] = [];
-    const channel = this.channelCache.get(channelId) || { id: channelId };
 
     for (const msg of replies) {
       if (msg.subtype) continue;
@@ -360,8 +381,7 @@ export class SlackService {
   }
 
   // ── API helper ────────────────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async api(method: string, params?: URLSearchParams): Promise<any> {
+  private async api(method: string, params?: URLSearchParams): Promise<SlackApiResponse> {
     const url = params
       ? `https://slack.com/api/${method}?${params.toString()}`
       : `https://slack.com/api/${method}`;
@@ -411,22 +431,18 @@ export async function fetchGmailMessages(config: { clientId: string; clientSecre
           `https://gmail.googleapis.com/gmail/v1/users/me/messages/${item.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
           { headers: { 'Authorization': `Bearer ${accessToken}` } }
         );
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const msgData = await msgRes.json() as any;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const headers = msgData.payload?.headers || [] as any[];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const from = headers.find((h: any) => h.name === 'From')?.value || 'Unknown';
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const subject = headers.find((h: any) => h.name === 'Subject')?.value || '(No Subject)';
-        const fromMatch = from.match(/^"?(.+?)"?\s*<(.+?)>$/);
+        const msgData = await msgRes.json();
+        const payload = msgData.payload as GmailPayload | undefined;
+        const from = getGmailHeaderValue(payload?.headers, 'From') || 'Unknown';
+        const subject = getGmailHeaderValue(payload?.headers, 'Subject') || '(No Subject)';
+        const parsedFrom = parseFromHeader(from);
 
         messages.push({
           id: crypto.randomUUID(),
           channelType: 'gmail',
           channelId: config.email,
-          senderName: fromMatch ? fromMatch[1] : from,
-          senderEmail: fromMatch ? fromMatch[2] : from,
+          senderName: parsedFrom.senderName,
+          senderEmail: parsedFrom.senderEmail,
           subject,
           body: msgData.snippet || '',
           timestamp: parseInt(msgData.internalDate),
