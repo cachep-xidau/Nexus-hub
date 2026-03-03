@@ -8,15 +8,14 @@ import {
     CHANNEL_LABELS,
     CHANNEL_COLORS,
     type MarketingResponse,
-    type CampaignRow,
     type TimeRange,
 } from '../lib/san-marketing-api';
 
 /* ── Funnel Stages ── */
 const FUNNEL_STAGES = [
-    { key: 'totalLead', label: 'Lead', color: 'var(--accent, #6366F1)' },
+    { key: 'totalLead', label: 'Lead', color: 'var(--accent, #3B82F6)' },
     { key: 'potential', label: 'Tiềm năng', color: '#3B82F6' },
-    { key: 'quality', label: 'Chất lượng', color: '#6366F1' },
+    { key: 'quality', label: 'Chất lượng', color: '#3B82F6' },
     { key: 'booked', label: 'Đặt hẹn', color: '#8B5CF6' },
     { key: 'arrived', label: 'Đến PK', color: '#A855F7' },
     { key: 'closed', label: 'Chốt', color: 'var(--green, #10B981)' },
@@ -63,7 +62,6 @@ export function SanReports() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        setLoading(true);
         const { start, end } = getDateRange(timeRange);
         fetchMarketingData(start, end)
             .then(setApiData)
@@ -270,7 +268,7 @@ export function SanReports() {
                     </div>
 
                     {/* ═══ Detail Table (Sticky Columns) ═══ */}
-                    <div className="glass-panel" className="san-table-wrap">
+                    <div className="glass-panel san-table-wrap">
                         <table className="san-table">
                             <thead>
                                 <tr style={{ background: 'var(--bg-surface)' }}>
@@ -331,5 +329,3 @@ export function SanReports() {
         </div>
     );
 }
-
-

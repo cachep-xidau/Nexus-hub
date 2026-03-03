@@ -1,85 +1,37 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import {
-  BookOpen, ArrowLeft,
-  Rocket, Target, PenTool, FileText,
-  Lightbulb, BarChart3, Code2, Palette, Shield,
-  Zap, Users, Globe, Layers,
-} from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import { Header } from '../components/layout/Header';
+import { DomainCards } from '../components/knowledge/domain-cards';
+import { KnowledgeLoadingView } from '../components/knowledge/knowledge-loading-view';
+import { createKnowledgeMarkdownComponents } from '../components/knowledge/knowledge-markdown-components';
 import {
-  getDomains, getArticlesByDomain, getArticleBySlug, getDomainBySlug,
-  searchArticles,
-  type KnowledgeDomain, type KnowledgeArticle, type ArticleSection,
+  getDomains,
+  getArticlesByDomain,
+  getArticleBySlug,
+  getDomainBySlug,
+  type KnowledgeDomain,
+  type KnowledgeArticle,
+  type ArticleSection,
 } from '../lib/knowledge-db';
 
-// ── Icon map + colors (used by DomainCards landing) ──
-
-const ICON_MAP: Record<string, typeof BookOpen> = {
-  Rocket, Target, PenTool, FileText, BookOpen,
-  Lightbulb, BarChart3, Code2, Palette, Shield,
-  Zap, Users, Globe, Layers,
-};
-
-const DOMAIN_COLORS: Record<string, { hex: string; rgb: string }> = {
-  Rocket:    { hex: '#F97316', rgb: '249, 115, 22' },
-  Target:    { hex: '#EF4444', rgb: '239, 68, 68' },
-  PenTool:   { hex: '#8B5CF6', rgb: '139, 92, 246' },
-  FileText:  { hex: '#06B6D4', rgb: '6, 182, 212' },
-  Lightbulb: { hex: '#F59E0B', rgb: '245, 158, 11' },
-  BarChart3: { hex: '#3B82F6', rgb: '59, 130, 246' },
-  Code2:     { hex: '#10B981', rgb: '16, 185, 129' },
-  Palette:   { hex: '#EC4899', rgb: '236, 72, 153' },
-  Shield:    { hex: '#6366F1', rgb: '99, 102, 241' },
-  Zap:       { hex: '#FBBF24', rgb: '251, 191, 36' },
-  Users:     { hex: '#14B8A6', rgb: '20, 184, 166' },
-  Globe:     { hex: '#0EA5E9', rgb: '14, 165, 233' },
-  Layers:    { hex: '#A855F7', rgb: '168, 85, 247' },
-  BookOpen:  { hex: '#6366F1', rgb: '99, 102, 241' },
-};
-
-function DomainIcon({ name, size = 18 }: { name: string; size?: number }) {
-  const Icon = ICON_MAP[name] || BookOpen;
-  return <Icon size={size} />;
+function createDomainsFingerprint(domains: KnowledgeDomain[]): string {
+  return domains
+    .map(domain =>
+      [
+        domain.id,
+        domain.slug,
+        domain.name,
+        domain.icon,
+        domain.description,
+        domain.sort_order,
+        domain.article_count ?? 0,
+      ].join('|')
+    )
+    .join('||');
 }
-// ── Domain Cards (landing) ──────────────────────────
-
-function DomainCards({ domains, onSelect }: {
-  domains: KnowledgeDomain[];
-  onSelect: (slug: string) => void;
-}) {
-  return (
-    <div className="knowledge-domain-grid">
-      {domains.map(d => {
-        const domainColor = DOMAIN_COLORS[d.icon] || DOMAIN_COLORS.BookOpen;
-        return (
-          <button
-            key={d.id}
-            className="knowledge-domain-card"
-            onClick={() => onSelect(d.slug)}
-            aria-label={`${d.name} — ${d.article_count || 0} bài viết`}
-            data-testid={`domain-card-${d.slug}`}
-            style={{ '--domain-color': domainColor.hex, '--domain-color-rgb': domainColor.rgb } as React.CSSProperties}
-          >
-            <div className="knowledge-domain-card-icon">
-              <DomainIcon name={d.icon} size={24} />
-            </div>
-            <h3>{d.name}</h3>
-            <p>{d.description}</p>
-            <span className="knowledge-domain-badge">
-              {d.article_count || 0} bài viết
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Main Knowledge Hub Page ─────────────────────────
-// NOTE: Sidebar navigation is handled by the app Sidebar component (Option C)
 
 export function KnowledgeHub() {
   const { domainSlug, articleSlug } = useParams<{ domainSlug?: string; articleSlug?: string }>();
@@ -88,65 +40,94 @@ export function KnowledgeHub() {
   const [domains, setDomains] = useState<KnowledgeDomain[]>([]);
   const [sections, setSections] = useState<ArticleSection[]>([]);
   const [article, setArticle] = useState<KnowledgeArticle | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<(KnowledgeArticle & { domain_name: string; domain_slug: string })[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load domains
   useEffect(() => {
-    getDomains().then(d => {
-      setDomains(d);
+    let cancelled = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const loadDomains = async () => {
+      const initial = await getDomains();
+      if (cancelled) return;
+
+      setDomains(initial);
       setLoading(false);
-    }).catch(() => setLoading(false));
+
+      const initialFingerprint = createDomainsFingerprint(initial);
+      refreshTimer = setTimeout(async () => {
+        const next = await getDomains();
+        if (cancelled) return;
+
+        const nextFingerprint = createDomainsFingerprint(next);
+        if (nextFingerprint !== initialFingerprint) {
+          setDomains(next);
+        }
+      }, 1000);
+    };
+
+    loadDomains().catch(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
+    };
   }, []);
 
-  // Load articles for active domain
   useEffect(() => {
-    if (domainSlug) {
-      getDomainBySlug(domainSlug).then(d => {
-        if (d) {
-          getArticlesByDomain(d.id).then(setSections);
-        }
+    let cancelled = false;
+
+    if (!domainSlug) {
+      Promise.resolve().then(() => {
+        if (!cancelled) setSections([]);
       });
-    } else {
-      setSections([]);
+      return () => {
+        cancelled = true;
+      };
     }
+
+    getDomainBySlug(domainSlug).then(domain => {
+      if (!domain || cancelled) return;
+      getArticlesByDomain(domain.id).then(data => {
+        if (!cancelled) setSections(data);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [domainSlug]);
 
-  // Load active article
   useEffect(() => {
-    if (domainSlug && articleSlug) {
-      getArticleBySlug(domainSlug, articleSlug).then(setArticle);
-    } else {
-      setArticle(null);
-    }
-  }, [domainSlug, articleSlug]);
+    let cancelled = false;
 
-  // Search (debounced)
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (searchQuery.trim().length > 1) {
-      searchTimerRef.current = setTimeout(() => {
-        searchArticles(searchQuery.trim()).then(setSearchResults);
-      }, 300);
-    } else {
-      setSearchResults([]);
+    if (!domainSlug || !articleSlug) {
+      Promise.resolve().then(() => {
+        if (!cancelled) setArticle(null);
+      });
+      return () => {
+        cancelled = true;
+      };
     }
-    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
-  }, [searchQuery]);
+
+    getArticleBySlug(domainSlug, articleSlug).then(data => {
+      if (!cancelled) setArticle(data);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [domainSlug, articleSlug]);
 
   const handleSelectDomain = (slug: string) => {
     navigate(`/knowledge/${slug}`);
-    setSearchQuery('');
   };
 
-  const handleSelectArticle = (dSlug: string, aSlug: string) => {
-    navigate(`/knowledge/${dSlug}/${aSlug}`);
-    setSearchQuery('');
+  const handleSelectArticle = (activeDomainSlug: string, activeArticleSlug: string) => {
+    navigate(`/knowledge/${activeDomainSlug}/${activeArticleSlug}`);
   };
 
-  // Auto-select first article when entering domain without article
   useEffect(() => {
     if (domainSlug && !articleSlug && sections.length > 0) {
       const first = sections[0]?.articles[0];
@@ -156,65 +137,16 @@ export function KnowledgeHub() {
     }
   }, [domainSlug, articleSlug, sections, navigate]);
 
-  // Markdown link handler — make relative .md links work
-  const markdownComponents = useMemo(() => ({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    a: ({ href, children }: any) => {
-      if (href && href.startsWith('./') && href.endsWith('.md') && domainSlug) {
-        const match = href.match(/\.\/(\d+)-([^.]+)\.md/);
-        if (match) {
-          const fileNum = match[1];
-          const allArticles = sections.flatMap(s => s.articles);
-          const target = allArticles.find(a => {
-            // Match by checking if the article's content was loaded from a file starting with this number
-            return a.sort_order === parseInt(fileNum) - 1;
-          });
-          if (target) {
-            return (
-              <a
-                href={`/knowledge/${domainSlug}/${target.slug}`}
-                onClick={(e) => { e.preventDefault(); handleSelectArticle(domainSlug, target.slug); }}
-              >
-                {children}
-              </a>
-            );
-          }
-        }
-      }
-      return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
-    },
-  }), [domainSlug, sections]);
+  const markdownComponents = createKnowledgeMarkdownComponents({
+    domainSlug,
+    sections,
+    onSelectArticle: handleSelectArticle,
+  });
 
   if (loading) {
-    return (
-      <>
-        <Header title="Knowledge Hub" subtitle="Loading..." />
-        <div className="page-content">
-          <div className="knowledge-landing">
-            <div className="knowledge-landing-header">
-              <BookOpen size={28} />
-              <div>
-                <h1>Knowledge Hub</h1>
-                <p className="text-muted">Đang tải...</p>
-              </div>
-            </div>
-            <div className="knowledge-domain-grid">
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="knowledge-domain-card skeleton" style={{ minHeight: 160 }}>
-                  <div className="skeleton-line" style={{ width: '40%', height: 44, borderRadius: 'var(--radius-md)' }} />
-                  <div className="skeleton-line" style={{ width: '70%', height: 16, marginTop: 8 }} />
-                  <div className="skeleton-line" style={{ width: '90%', height: 14, marginTop: 4 }} />
-                  <div className="skeleton-line" style={{ width: '30%', height: 12, marginTop: 'auto' }} />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </>
-    );
+    return <KnowledgeLoadingView />;
   }
 
-  // Landing page (no domain selected)
   if (!domainSlug) {
     return (
       <>
@@ -226,8 +158,7 @@ export function KnowledgeHub() {
     );
   }
 
-  // Domain + Article view (sidebar handles back navigation)
-  const currentDomain = domains.find(d => d.slug === domainSlug);
+  const currentDomain = domains.find(domain => domain.slug === domainSlug);
   const domainName = currentDomain?.name || domainSlug;
   const subtitle = article
     ? `Knowledge Hub / ${domainName} / ${article.title}`
@@ -235,13 +166,10 @@ export function KnowledgeHub() {
 
   return (
     <>
-      <Header
-        title={domainName}
-        subtitle={subtitle}
-      />
+      <Header title={domainName} subtitle={subtitle} />
       <div className="page-content">
         {article ? (
-          <article className="knowledge-article" style={{ margin: '0 auto' }}>
+          <article className="knowledge-article">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {article.content}
             </ReactMarkdown>

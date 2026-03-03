@@ -10,7 +10,6 @@ import {
     CHANNEL_LABELS,
     CHANNEL_COLORS,
     type MarketingResponse,
-    type DailyPoint,
     type TimeRange,
 } from '../lib/san-marketing-api';
 
@@ -147,7 +146,6 @@ export function SanOverview() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        setLoading(true);
         const { start, end } = getDateRange(timeRange);
         // Also fetch previous period for delta calculation
         const prevRange = getPrevRange(timeRange);
@@ -273,8 +271,6 @@ export function SanOverview() {
         quality: channelBreakdown.reduce((s, c) => s + c.quality, 0),
         spend: channelBreakdown.reduce((s, c) => s + c.spend, 0),
     }), [channelBreakdown]);
-
-    const maxLeads = Math.max(...channelBreakdown.map(c => c.leads), 1);
 
     return (
         <div className="page-content">
@@ -402,7 +398,7 @@ export function SanOverview() {
                                 ({periodLabel} — {activeLabel})
                             </span>
                         </h2>
-                        <div className="glass-panel" className="san-table-wrap">
+                        <div className="glass-panel san-table-wrap">
                             <table className="san-table">
                                 <thead>
                                     <tr style={{ background: 'var(--bg-surface)' }}>
@@ -446,5 +442,3 @@ export function SanOverview() {
         </div>
     );
 }
-
-

@@ -9,7 +9,6 @@ import {
     CHANNEL_LABELS,
     CHANNEL_COLORS,
     type EntryRow,
-    type MarketingResponse,
     type TimeRange,
 } from '../lib/san-marketing-api';
 
@@ -47,7 +46,6 @@ export function SanData() {
     const dateRange = useMemo(() => getDateRange(timeRange), [timeRange]);
 
     useEffect(() => {
-        setLoading(true);
         const fetchAll = activeCompanyId === 'all'
             ? Promise.all(COMPANIES.map(co => fetchEntries(co.id, dateRange.start, dateRange.end)))
                 .then(results => results.flat())
@@ -142,7 +140,22 @@ export function SanData() {
         const campaign = companyCampaigns.find(c => c.id === newRow.campaignId);
         if (!campaign) return;
         if (editingId) {
-            setEntries(prev => prev.map(e => e.id === editingId ? { ...e, ...newRow, campaignName: campaign.name, channel: newRow.channel || campaign.channel } : e));
+            setEntries(prev => prev.map(e => e.id === editingId ? {
+                ...e,
+                channel: newRow.channel || campaign.channel,
+                campaignId: parseInt(newRow.campaignId) || 0,
+                campaignName: campaign.name,
+                totalLead: newRow.totalLead,
+                spam: newRow.spam,
+                potential: newRow.potential,
+                quality: newRow.quality,
+                booked: newRow.booked,
+                arrived: newRow.arrived,
+                closed: newRow.closed,
+                bill: newRow.bill,
+                budgetTarget: newRow.budgetTarget,
+                budgetActual: newRow.budgetActual,
+            } : e));
         } else {
             const now = new Date();
             const entry: LeadEntry = {

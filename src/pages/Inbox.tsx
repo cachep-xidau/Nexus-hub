@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Header } from '../components/layout/Header';
 import { MessageCircle, AtSign, GitBranch, Megaphone, Slack, Mail, Send, RefreshCw } from 'lucide-react';
-import { SlackService, fetchGmailMessages, fetchTelegramMessages, type ChannelMessage } from '../lib/channels';
+import { SlackService, fetchTelegramMessages, type ChannelMessage } from '../lib/channels';
 import { FileAttachments } from '../components/FileAnalysisCard';
 import { type FileAttachment } from '../lib/file-analysis';
 import { getSetting } from '../lib/db';
+import { getGmailAccountList, refreshAccountToken } from '../lib/gmail-auth';
+import { tauriFetch } from '../lib/tauri-fetch';
+import { getErrorMessage } from '../lib/error-utils';
+import { getGmailHeaderValue, parseFromHeader, type GmailPayload } from '../lib/gmail-message-utils';
 
 type FilterType = 'all' | 'dm' | 'mention' | 'thread_reply' | 'channel_broadcast';
 
@@ -49,6 +53,49 @@ function timeAgo(ts: number): string {
   return `${days}d`;
 }
 
+async function fetchGmailMessagesByAccessToken(accessToken: string, email: string): Promise<ChannelMessage[]> {
+  const listRes = await tauriFetch(
+    'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&q=in:inbox',
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const listData = await listRes.json();
+  if (!listData.messages) return [];
+
+  const messages: ChannelMessage[] = [];
+
+  for (const item of listData.messages.slice(0, 15)) {
+    try {
+      const msgRes = await tauriFetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${item.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      const msgData = await msgRes.json();
+      const payload = msgData.payload as GmailPayload | undefined;
+      const from = getGmailHeaderValue(payload?.headers, 'From') || 'Unknown';
+      const subject = getGmailHeaderValue(payload?.headers, 'Subject') || '(No Subject)';
+      const parsedFrom = parseFromHeader(from);
+
+      messages.push({
+        id: crypto.randomUUID(),
+        channelType: 'gmail',
+        channelId: email,
+        senderName: parsedFrom.senderName,
+        senderEmail: parsedFrom.senderEmail,
+        subject,
+        body: msgData.snippet || '',
+        timestamp: parseInt(msgData.internalDate),
+        isRead: !msgData.labelIds?.includes('UNREAD'),
+        metadata: JSON.stringify({ gmailId: item.id }),
+        messageType: 'normal',
+      });
+    } catch {
+      // skip broken item
+    }
+  }
+
+  return messages;
+}
+
 export function Inbox() {
   const [messages, setMessages] = useState<ChannelMessage[]>([]);
   const [filter, setFilter] = useState<FilterType>('all');
@@ -73,23 +120,48 @@ export function Inbox() {
       } else {
         errs.push('⚠️ No Slack token saved. Go to Settings to add it.');
       }
-    } catch (e: any) {
-      errs.push(`❌ Slack error: ${e.message || String(e)}`);
+    } catch (e: unknown) {
+      errs.push(`❌ Slack error: ${getErrorMessage(e)}`);
     }
 
     try {
-      const gmailClientId = await getSetting('gmail_client_id');
-      const gmailSecret = await getSetting('gmail_client_secret');
-      const gmailRefresh = await getSetting('gmail_refresh_token');
-      const gmailEmail = await getSetting('gmail_email');
-      if (gmailClientId && gmailSecret && gmailRefresh && gmailEmail) {
-        const gmailMsgs = await fetchGmailMessages({
-          clientId: gmailClientId, clientSecret: gmailSecret,
-          refreshToken: gmailRefresh, email: gmailEmail,
-        });
-        all.push(...gmailMsgs);
+      const gmailAccounts = await getGmailAccountList();
+      if (gmailAccounts.length > 0) {
+        const gmailResults = await Promise.allSettled(
+          gmailAccounts.map(async (acc) => {
+            const token = await refreshAccountToken(acc.id);
+            if (!token) throw new Error(`token refresh failed: ${acc.email}`);
+            return fetchGmailMessagesByAccessToken(token, acc.email);
+          })
+        );
+        for (const result of gmailResults) {
+          if (result.status === 'fulfilled') all.push(...result.value);
+        }
+      } else {
+        // Fallback for legacy single-account settings
+        const gmailClientId = await getSetting('gmail_client_id');
+        const gmailSecret = await getSetting('gmail_client_secret');
+        const gmailRefresh = await getSetting('gmail_refresh_token');
+        const gmailEmail = await getSetting('gmail_email');
+        if (gmailClientId && gmailSecret && gmailRefresh && gmailEmail) {
+          const tokenRes = await tauriFetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              client_id: gmailClientId,
+              client_secret: gmailSecret,
+              refresh_token: gmailRefresh,
+              grant_type: 'refresh_token',
+            }).toString(),
+          });
+          const tokenData = await tokenRes.json();
+          if (tokenData.access_token) {
+            const gmailMsgs = await fetchGmailMessagesByAccessToken(tokenData.access_token, gmailEmail);
+            all.push(...gmailMsgs);
+          }
+        }
       }
-    } catch (e: any) { errs.push(`❌ Gmail: ${e.message}`); }
+    } catch (e: unknown) { errs.push(`❌ Gmail: ${getErrorMessage(e)}`); }
 
     try {
       const telegramToken = await getSetting('telegram_bot_token');
@@ -100,7 +172,7 @@ export function Inbox() {
         });
         all.push(...telegramMsgs);
       }
-    } catch (e: any) { errs.push(`❌ Telegram: ${e.message}`); }
+    } catch (e: unknown) { errs.push(`❌ Telegram: ${getErrorMessage(e)}`); }
 
     all.sort((a, b) => b.timestamp - a.timestamp);
     setMessages(all);
@@ -108,7 +180,12 @@ export function Inbox() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadMessages(); }, [loadMessages]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadMessages();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadMessages]);
 
   const filtered = filter === 'all'
     ? messages
