@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 .vercel
 .env*.local
+Nexus Hub_1.0.0_aarch64.dmg
+*.dmg
