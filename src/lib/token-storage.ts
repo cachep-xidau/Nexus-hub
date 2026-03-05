@@ -59,7 +59,14 @@ export async function getUser(): Promise<any | null> {
     return await store.get(USER_KEY) as any | null;
   }
   const userStr = localStorage.getItem(USER_KEY);
-  return userStr ? JSON.parse(userStr) : null;
+  if (!userStr) return null;
+  try {
+    return JSON.parse(userStr);
+  } catch {
+    console.warn('[TokenStorage] Corrupt user data in localStorage, clearing');
+    localStorage.removeItem(USER_KEY);
+    return null;
+  }
 }
 
 export async function setUser(user: any): Promise<void> {

@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { AuthProvider, useAuth } from './lib/auth';
 import { queryClient } from './lib/query-client';
 import { Login } from './pages/Login';
@@ -24,8 +23,30 @@ import { seedKnowledge } from './lib/knowledge-seed';
 import { syncOnlineCredentialsToLocalSettings } from './lib/online-credentials';
 import { AppErrorBoundary } from './components/layout/app-error-boundary';
 
+const DISABLE_LOGIN_GATE = import.meta.env.DEV && import.meta.env.VITE_DISABLE_LOGIN_GATE === 'true';
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
+  const [timedOut, setTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!isLoading) return;
+    const timer = setTimeout(() => setTimedOut(true), 10_000);
+    return () => clearTimeout(timer);
+  }, [isLoading]);
+
+  if (DISABLE_LOGIN_GATE) return <>{children}</>;
+
+  if (timedOut) {
+    return (
+      <div className="login-gate-shell">
+        <div className="login-gate-card">
+          <p>Connection timed out. Please reload.</p>
+          <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>Reload</button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -59,10 +80,20 @@ function AppContent() {
     };
   }, []);
 
+  // Global async error handler — catches unhandled promise rejections
+  useEffect(() => {
+    const handler = (event: PromiseRejectionEvent) => {
+      console.error('[App] Unhandled rejection:', event.reason);
+    };
+    window.addEventListener('unhandledrejection', handler);
+    return () => window.removeEventListener('unhandledrejection', handler);
+  }, []);
+
   useEffect(() => {
     if (!user) return;
+
     syncOnlineCredentialsToLocalSettings().catch((e) => console.warn('[Credentials] Sync skipped:', e));
-    seedDemoData().catch(() => {});
+    seedDemoData().catch(() => { });
     seedKnowledge().catch((e) => console.warn('[Knowledge Hub] Seed skipped:', e));
   }, [user]);
 
@@ -127,7 +158,7 @@ export default function App() {
             <AppContent />
           </AuthProvider>
         </BrowserRouter>
-        {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
+        {/* <ReactQueryDevtools initialIsOpen={false} /> */}
       </QueryClientProvider>
     </AppErrorBoundary>
   );

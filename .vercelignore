@@ -1,0 +1,15 @@
+node_modules
+.git
+.github
+.gitignore
+*.md
+.env*
+.env
+coverage
+*.log
+.turbo
+.idea
+.vscode
+*.tgz
+.DS_Store
+Thumbs.db

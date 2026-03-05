@@ -45,10 +45,10 @@ Emails:
 ${emailSummaries}`;
 
     const res = await tauriFetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.1 },
@@ -62,13 +62,18 @@ ${emailSummaries}`;
     // Extract JSON array from response
     const match = text.match(/\[[\s\S]*?\]/);
     if (match) {
-      const categories: string[] = JSON.parse(match[0]);
-      return emails.map((e, i) => ({
-        ...e,
-        category: (categories[i] && categories[i] in EMAIL_CATEGORIES)
-          ? categories[i] as EmailCategory
-          : classifyByRules(e),
-      }));
+      try {
+        const categories: string[] = JSON.parse(match[0]);
+        if (!Array.isArray(categories)) throw new Error('Not an array');
+        return emails.map((e, i) => ({
+          ...e,
+          category: (i < categories.length && categories[i] in EMAIL_CATEGORIES)
+            ? categories[i] as EmailCategory
+            : classifyByRules(e),
+        }));
+      } catch (parseError) {
+        console.warn('[Classifier] AI response parse failed, using rules:', parseError);
+      }
     }
   } catch (e) {
     console.error('AI classification failed, using rules:', e);

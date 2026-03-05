@@ -5,6 +5,7 @@ import { FeatureTree } from '../components/repo/FeatureTree';
 import { ArtifactsTable } from '../components/repo/ArtifactsTable';
 import { GenerateArtifactsModal } from '../components/repo/GenerateArtifactsModal';
 import { PrdChat } from '../components/repo/PrdChat';
+import { EpicsChat } from '../components/repo/EpicsChat';
 import { AnalysisTab } from '../components/repo/AnalysisTab';
 import { ConnectionsTab } from '../components/repo/ConnectionsTab';
 import { GuideSection } from '../components/repo/GuideSection';
@@ -19,6 +20,7 @@ import {
     useProject,
     useUpdateProject,
     useFeatures,
+    useAnalysisDocs,
 } from '../lib/hooks/use-repo-api';
 
 type Tab = 'overview' | 'analysis' | 'prd' | 'artifacts' | 'prototype' | 'connections';
@@ -49,10 +51,12 @@ export function ProjectDetail() {
     const [showGenerate, setShowGenerate] = useState(false);
     const [generateFunctionId, setGenerateFunctionId] = useState<string | null>(null);
     const [showPrdChat, setShowPrdChat] = useState(false);
+    const [showEpicsChat, setShowEpicsChat] = useState(false);
     const [artifactRefreshKey, setArtifactRefreshKey] = useState(0);
 
     const projectQuery = useProject(projectId);
     const featuresQuery = useFeatures(projectId);
+    const analysisDocsQuery = useAnalysisDocs(projectId);
     const updateProjectMutation = useUpdateProject();
 
     const project = projectQuery.data ?? null;
@@ -295,14 +299,11 @@ export function ProjectDetail() {
                                     <div className="analysis-card-desc">Quick artifact generation</div>
                                 </div>
                             </button>
-                            <button className="analysis-card" onClick={() => {
-                                setGenerateFunctionId(null);
-                                setShowGenerate(true);
-                            }} disabled={!project.prd_content || features.length === 0}>
+                            <button className="analysis-card" onClick={() => setShowEpicsChat(true)}>
                                 <Layers size={24} />
                                 <div>
                                     <div className="analysis-card-name">BMAD Generate</div>
-                                    <div className="analysis-card-desc">Epic/Story → BSA artifacts</div>
+                                    <div className="analysis-card-desc">Epics & Stories via BMAD chat</div>
                                 </div>
                             </button>
                         </div>
@@ -420,6 +421,21 @@ export function ProjectDetail() {
                     onPrdSaved={async () => {
                         setShowPrdChat(false);
                         await projectQuery.refetch();
+                    }}
+                />
+            )}
+
+            {showEpicsChat && (
+                <EpicsChat
+                    projectId={projectId}
+                    projectName={project.name}
+                    prdContent={project.prd_content || ''}
+                    analysisDocs={(analysisDocsQuery.data ?? []).filter(d => ['prd', 'product-brief'].includes(d.type))}
+                    onClose={() => setShowEpicsChat(false)}
+                    onEpicsSaved={async () => {
+                        setShowEpicsChat(false);
+                        await projectQuery.refetch();
+                        refreshArtifactTree();
                     }}
                 />
             )}

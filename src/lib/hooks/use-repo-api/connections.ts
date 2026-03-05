@@ -1,3 +1,5 @@
+// ── MCP Connections Hooks ────────────────────────────────────────────────────
+// API-first with localStorage fallback when backend is unavailable.
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api-client';
 import { repoKeys } from './keys';
@@ -8,6 +10,12 @@ import {
   type CreateMcpConnectionInput,
   type UpdateMcpConnectionInput,
 } from './types';
+import {
+  localGetMcpConnections,
+  localCreateMcpConnection,
+  localUpdateMcpConnection,
+  localDeleteMcpConnection,
+} from '../../repo-local-store';
 
 function mapConnection(connection: ApiMcpConnection): McpConnection {
   return {
@@ -35,8 +43,12 @@ export function useMcpConnections(projectId: string) {
   return useQuery({
     queryKey: repoKeys.connections(projectId),
     queryFn: async () => {
-      const connections = await api.get<ApiMcpConnection[]>(`/api/projects/${projectId}/mcp-connections`);
-      return connections.map(mapConnection);
+      try {
+        const connections = await api.get<ApiMcpConnection[]>(`/api/projects/${projectId}/mcp-connections`);
+        return connections.map(mapConnection);
+      } catch {
+        return localGetMcpConnections(projectId);
+      }
     },
     enabled: !!projectId,
   });
@@ -45,11 +57,16 @@ export function useMcpConnections(projectId: string) {
 export function useCreateMcpConnection() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: CreateMcpConnectionInput & { projectId: string }) =>
-      api.post<ApiMcpConnection>('/api/mcp-connections', data),
-    onSuccess: (connection) => {
-      queryClient.invalidateQueries({ queryKey: repoKeys.connections(connection.projectId) });
-      queryClient.invalidateQueries({ queryKey: repoKeys.connection(connection.id) });
+    mutationFn: async (data: CreateMcpConnectionInput & { projectId: string }) => {
+      try {
+        const created = await api.post<ApiMcpConnection>('/api/mcp-connections', data);
+        return mapConnection(created);
+      } catch {
+        return localCreateMcpConnection(data.projectId, data);
+      }
+    },
+    onSuccess: (_conn, variables) => {
+      queryClient.invalidateQueries({ queryKey: repoKeys.connections(variables.projectId) });
     },
   });
 }
@@ -57,11 +74,16 @@ export function useCreateMcpConnection() {
 export function useUpdateMcpConnection() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateMcpConnectionInput }) =>
-      api.put<ApiMcpConnection>(`/api/mcp-connections/${id}`, toApiConnectionUpdate(data)),
-    onSuccess: (connection) => {
-      queryClient.invalidateQueries({ queryKey: repoKeys.connection(connection.id) });
-      queryClient.invalidateQueries({ queryKey: repoKeys.connections(connection.projectId) });
+    mutationFn: async ({ id, data }: { id: string; data: UpdateMcpConnectionInput }) => {
+      try {
+        const updated = await api.put<ApiMcpConnection>(`/api/mcp-connections/${id}`, toApiConnectionUpdate(data));
+        return mapConnection(updated);
+      } catch {
+        return localUpdateMcpConnection(id, data);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: repoKeys.all });
     },
   });
 }
@@ -69,7 +91,13 @@ export function useUpdateMcpConnection() {
 export function useDeleteMcpConnection() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.del<{ success: boolean }>(`/api/mcp-connections/${id}`),
+    mutationFn: async (id: string) => {
+      try {
+        await api.del<{ success: boolean }>(`/api/mcp-connections/${id}`);
+      } catch {
+        localDeleteMcpConnection(id);
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repoKeys.all });
     },

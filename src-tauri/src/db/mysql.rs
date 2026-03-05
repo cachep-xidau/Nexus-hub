@@ -214,40 +214,44 @@ impl DatabaseConnection for MysqlConnection {
             Some((schema, name)) => (schema.to_string(), name.to_string()),
             None => ("".to_string(), table.to_string()),
         };
-        let safe_schema = schema_name.replace('\'', "''");
-        let safe_table = table_name.replace('\'', "''");
 
-        let sql = if safe_schema.is_empty() {
-            format!(
+        let mut conn = self.get_conn()?;
+
+        let result: Vec<mysql::Row> = if schema_name.is_empty() {
+            conn.exec(
                 "SELECT column_name, column_type, is_nullable, column_default, column_key \
                  FROM information_schema.columns \
-                 WHERE table_name = '{}' \
+                 WHERE table_name = ? \
                  ORDER BY ordinal_position",
-                safe_table
-            )
+                (table_name.as_str(),)
+            ).map_err(|e| format!("Query error: {}", e))?
         } else {
-            format!(
+            conn.exec(
                 "SELECT column_name, column_type, is_nullable, column_default, column_key \
                  FROM information_schema.columns \
-                 WHERE table_schema = '{}' AND table_name = '{}' \
+                 WHERE table_schema = ? AND table_name = ? \
                  ORDER BY ordinal_position",
-                safe_schema, safe_table
-            )
+                (schema_name.as_str(), table_name.as_str())
+            ).map_err(|e| format!("Query error: {}", e))?
         };
 
-        let result = self.query(&sql)?;
+        let columns: Vec<String> = if result.is_empty() {
+            vec![]
+        } else {
+            result[0].columns().iter().map(|c| c.name_str().to_string()).collect()
+        };
 
-        Ok(result.rows.iter()
+        Ok(result.iter()
             .filter_map(|row| {
-                if row.len() < 5 {
+                if columns.len() < 5 {
                     return None;
                 }
-                let name = row.get(0)?.clone().unwrap_or_default();
-                let data_type = row.get(1)?.clone().unwrap_or_default();
-                let nullable_str = row.get(2)?.clone().unwrap_or_default().to_lowercase();
+                let name = row.as_ref(0).and_then(|v| Self::value_to_string(v)).unwrap_or_default();
+                let data_type = row.as_ref(1).and_then(|v| Self::value_to_string(v)).unwrap_or_default();
+                let nullable_str = row.as_ref(2).and_then(|v| Self::value_to_string(v)).unwrap_or_default().to_lowercase();
                 let nullable = nullable_str == "yes";
-                let default = row.get(3).and_then(|s| s.clone());
-                let key_str = row.get(4)?.clone().unwrap_or_default().to_uppercase();
+                let default = row.as_ref(3).and_then(|v| Self::value_to_string(v));
+                let key_str = row.as_ref(4).and_then(|v| Self::value_to_string(v)).unwrap_or_default().to_uppercase();
                 let primary_key = key_str == "PRI";
 
                 Some(ColumnInfo {
@@ -259,6 +263,10 @@ impl DatabaseConnection for MysqlConnection {
                 })
             })
             .collect())
+    }
+
+    fn is_alive(&self) -> bool {
+        self.pool.get_conn().is_ok()
     }
 
     fn close(&self) {

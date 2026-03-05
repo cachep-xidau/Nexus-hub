@@ -4,7 +4,7 @@
 import { tauriFetch } from './tauri-fetch';
 import { getToken, clearToken } from './token-storage';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3005';
 
 // User type matching backend response
 export interface User {
@@ -82,6 +82,15 @@ class ApiClient {
       // Return response data
       if (response.status === 204) {
         return {} as T;
+      }
+
+      // Guard: if the server returned HTML (e.g. Vite SPA fallback), it means
+      // no backend API is running at the configured URL.
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        throw new Error(
+          'API server is not running. The configured API URL returned an HTML page instead of JSON.'
+        );
       }
 
       return await response.json();

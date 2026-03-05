@@ -1,3 +1,5 @@
+// ── Functions Hooks ─────────────────────────────────────────────────────────
+// API-first with localStorage fallback when backend is unavailable.
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api-client';
 import { repoKeys } from './keys';
@@ -10,6 +12,11 @@ import {
   type CreateFunctionInput,
   type UpdateFunctionInput,
 } from './types';
+import {
+  localCreateFunction,
+  localUpdateFunction,
+  localDeleteFunction,
+} from '../../repo-local-store';
 
 function mapArtifact(artifact: ApiArtifact): RepoArtifact {
   return {
@@ -39,8 +46,12 @@ export function useFunctions(featureId: string) {
   return useQuery({
     queryKey: repoKeys.functions(featureId),
     queryFn: async () => {
-      const functions = await api.get<ApiFunction[]>(`/api/features/${featureId}/functions`);
-      return functions.map(mapFunction);
+      try {
+        const functions = await api.get<ApiFunction[]>(`/api/features/${featureId}/functions`);
+        return functions.map(mapFunction);
+      } catch {
+        return [];
+      }
     },
     enabled: !!featureId,
   });
@@ -49,10 +60,16 @@ export function useFunctions(featureId: string) {
 export function useCreateFunction() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: CreateFunctionInput & { featureId: string }) =>
-      api.post<ApiFunction>('/api/functions', data),
-    onSuccess: (fn) => {
-      queryClient.invalidateQueries({ queryKey: repoKeys.functions(fn.featureId) });
+    mutationFn: async (data: CreateFunctionInput & { featureId: string }) => {
+      try {
+        const created = await api.post<ApiFunction>('/api/functions', data);
+        return mapFunction(created);
+      } catch {
+        return localCreateFunction(data.featureId, data);
+      }
+    },
+    onSuccess: (_fn, variables) => {
+      queryClient.invalidateQueries({ queryKey: repoKeys.functions(variables.featureId) });
       queryClient.invalidateQueries({ queryKey: repoKeys.all });
     },
   });
@@ -61,10 +78,15 @@ export function useCreateFunction() {
 export function useUpdateFunction() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateFunctionInput }) =>
-      api.put<ApiFunction>(`/api/functions/${id}`, data),
-    onSuccess: (fn) => {
-      queryClient.invalidateQueries({ queryKey: repoKeys.functions(fn.featureId) });
+    mutationFn: async ({ id, data }: { id: string; data: UpdateFunctionInput }) => {
+      try {
+        const updated = await api.put<ApiFunction>(`/api/functions/${id}`, data);
+        return mapFunction(updated);
+      } catch {
+        return localUpdateFunction(id, data);
+      }
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repoKeys.all });
     },
   });
@@ -73,7 +95,13 @@ export function useUpdateFunction() {
 export function useDeleteFunction() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.del<{ success: boolean }>(`/api/functions/${id}`),
+    mutationFn: async (id: string) => {
+      try {
+        await api.del<{ success: boolean }>(`/api/functions/${id}`);
+      } catch {
+        localDeleteFunction(id);
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repoKeys.all });
     },

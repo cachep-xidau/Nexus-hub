@@ -96,15 +96,10 @@ export function Repo() {
     const projects = projectsQuery.data ?? [];
     const loading = projectsQuery.isLoading;
     const creating = createProjectMutation.isPending;
-
-    useEffect(() => {
-        if (projectsQuery.error) {
-            const message = projectsQuery.error instanceof Error
-                ? projectsQuery.error.message
-                : 'Failed to load projects';
-            setError(message);
-        }
-    }, [projectsQuery.error]);
+    const queryError = projectsQuery.error
+        ? (projectsQuery.error instanceof Error ? projectsQuery.error.message : 'Failed to load projects')
+        : '';
+    const visibleError = error || queryError;
 
     const handleCreate = async () => {
         if (!newName.trim() || creating) return;
@@ -143,26 +138,24 @@ export function Repo() {
                         <Loader2 size={32} className="spin" />
                         <h3>Loading projects...</h3>
                     </div>
-                ) : error ? (
+                ) : visibleError ? (
                     <div className="empty-state">
                         <AlertCircle size={32} style={{ color: 'var(--error)' }} />
-                        <h3>{error}</h3>
+                        <h3>{visibleError}</h3>
                     </div>
                 ) : (
                     <div className="repo-content">
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
+                            <button className="btn-primary" onClick={() => setShowCreate(true)}>
+                                <Plus size={14} />
+                                <span>Add new project</span>
+                            </button>
+                        </div>
+
                         <div className="repo-grid">
                             {projects.map(p => (
                                 <ProjectCard key={p.id} project={p} onDelete={handleDelete} />
                             ))}
-
-                            {/* Add New Card */}
-                            <div className="repo-card repo-card--add" onClick={() => setShowCreate(true)}>
-                                <div className="repo-add-icon">
-                                    <Plus size={24} />
-                                </div>
-                                <h4>Start New Analysis</h4>
-                                <p>Create a BSA project with AI-powered artifact generation</p>
-                            </div>
                         </div>
                     </div>
                 )}

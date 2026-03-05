@@ -18,7 +18,13 @@ export const queryClient = new QueryClient({
     queries: {
       staleTime: 30 * 1000, // 30s
       gcTime: 5 * 60 * 1000, // 5min
-      retry: 2,
+      retry: (failureCount, error) => {
+        // Don't retry if the API server is unreachable
+        if (error instanceof Error && error.message.includes('API server is not running')) {
+          return false;
+        }
+        return failureCount < 2;
+      },
       refetchOnWindowFocus: false,
       networkMode: 'online',
     },

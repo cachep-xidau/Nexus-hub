@@ -1,7 +1,7 @@
 // ── Auth Context & Hooks ───────────────────────────────────────────────────
 // React Context for authentication state and JWT token management.
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { api } from './api-client';
 import { setToken, setUser, clearToken, clearUser } from './token-storage';
 
@@ -36,32 +36,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUserState] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const sessionCheckId = useRef(0);
 
   // Check session on mount
   useEffect(() => {
-    checkSession();
+    const thisCheckId = ++sessionCheckId.current;
+    checkSession(thisCheckId);
   }, []);
 
-  async function checkSession() {
+  async function checkSession(checkId: number) {
     try {
       const session = await api.getSession();
+      // Only apply if this is still the latest check (prevents race with login)
+      if (checkId !== sessionCheckId.current) return;
       const authUser: AuthUser = {
         id: session.id,
         email: session.email,
         name: session.name || null,
-        emailVerified: null, // Backend may add this field
+        emailVerified: null,
       };
       setUserState(authUser);
       await setUser(authUser);
     } catch {
+      if (checkId !== sessionCheckId.current) return;
       setUserState(null);
       await clearUser();
     } finally {
-      setIsLoading(false);
+      if (checkId === sessionCheckId.current) {
+        setIsLoading(false);
+      }
     }
   }
 
   async function login(email: string, password: string): Promise<void> {
+    sessionCheckId.current++; // Invalidate any pending session check
     setIsLoading(true);
     setError(null);
     try {

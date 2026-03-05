@@ -146,28 +146,40 @@ impl DatabaseConnection for PostgresConnection {
             Some((schema, name)) => (schema.to_string(), name.to_string()),
             None => ("public".to_string(), table.to_string()),
         };
-        let safe_schema = schema_name.replace('\'', "''");
-        let safe_table = table_name.replace('\'', "''");
-        let sql = format!(
-            "SELECT column_name, data_type, is_nullable, column_default \
-             FROM information_schema.columns \
-             WHERE table_schema = '{}' AND table_name = '{}' \
-             ORDER BY ordinal_position",
-            safe_schema,
-            safe_table
-        );
-        self.query(&sql).map(|r| {
-            r.rows.iter()
+
+        self.rt.block_on(async {
+            let start = std::time::Instant::now();
+            let rows = self.client
+                .query(
+                    "SELECT column_name::text, data_type::text, is_nullable::text, column_default::text \
+                     FROM information_schema.columns \
+                     WHERE table_schema = $1 AND table_name = $2 \
+                     ORDER BY ordinal_position",
+                    &[&schema_name, &table_name]
+                )
+                .await
+                .map_err(|e| format!("Error: {}", e))?;
+
+            let columns: Vec<ColumnInfo> = rows.iter()
                 .filter_map(|row| {
                     Some(ColumnInfo {
-                        name: row.get(0)?.clone().unwrap_or_default(),
-                        data_type: row.get(1)?.clone().unwrap_or_default(),
-                        nullable: row.get(2)?.clone().unwrap_or_default() == "YES",
-                        default: row.get(3).and_then(|s| s.clone()),
+                        name: row.try_get::<_, Option<String>>(0).ok().flatten().unwrap_or_default(),
+                        data_type: row.try_get::<_, Option<String>>(1).ok().flatten().unwrap_or_default(),
+                        nullable: row.try_get::<_, Option<String>>(2).ok().flatten().unwrap_or_default() == "YES",
+                        default: row.try_get::<_, Option<String>>(3).ok().flatten(),
                         primary_key: false,
                     })
                 })
-                .collect()
+                .collect();
+
+            let _ = start; // suppress unused
+            Ok(columns)
+        })
+    }
+
+    fn is_alive(&self) -> bool {
+        self.rt.block_on(async {
+            self.client.simple_query("SELECT 1").await.is_ok()
         })
     }
 

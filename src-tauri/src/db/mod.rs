@@ -13,6 +13,60 @@ pub fn get_connection_pool() -> ConnectionPool {
     Mutex::new(std::collections::HashMap::new())
 }
 
+// ── SQL Validation ──────────────────────────────────────────────────────────
+// Prevents dangerous SQL operations from the frontend TablePlus UI.
+
+fn validate_query_sql(sql: &str) -> Result<(), String> {
+    let trimmed = sql.trim();
+    if trimmed.is_empty() {
+        return Err("Empty SQL statement".into());
+    }
+
+    let upper = trimmed.to_uppercase();
+
+    // Query must be read-only
+    if !upper.starts_with("SELECT")
+        && !upper.starts_with("SHOW")
+        && !upper.starts_with("DESCRIBE")
+        && !upper.starts_with("EXPLAIN")
+        && !upper.starts_with("WITH")
+    {
+        return Err("db_query only allows SELECT/SHOW/DESCRIBE/EXPLAIN/WITH statements".into());
+    }
+
+    validate_common(sql)
+}
+
+fn validate_execute_sql(sql: &str) -> Result<(), String> {
+    let trimmed = sql.trim();
+    if trimmed.is_empty() {
+        return Err("Empty SQL statement".into());
+    }
+
+    validate_common(sql)
+}
+
+fn validate_common(sql: &str) -> Result<(), String> {
+    let upper = sql.to_uppercase();
+
+    // Block dangerous keywords
+    let blocked = ["ATTACH", "DETACH", "LOAD_EXTENSION"];
+    for keyword in blocked {
+        // Check for keyword as a standalone word (surrounded by whitespace or start/end)
+        if upper.split_whitespace().any(|w| w == keyword) {
+            return Err(format!("SQL keyword '{}' is not allowed", keyword));
+        }
+    }
+
+    // Block multi-statement execution (simple heuristic: >1 semicolon in non-trailing position)
+    let without_trailing = sql.trim().trim_end_matches(';');
+    if without_trailing.contains(';') {
+        return Err("Multiple SQL statements in a single call are not allowed".into());
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 pub fn db_connect(
     config: ConnectionConfig,
@@ -20,7 +74,6 @@ pub fn db_connect(
 ) -> Result<ConnectionInfo, String> {
     let conn = create_connection(&config)?;
     let mut info = conn.info();
-    // Keep a stable ID across frontend saved config and runtime pool lookup.
     info.id = config.id.clone();
 
     let mut pool = pool.lock().map_err(|_| "Lock error")?;
@@ -47,6 +100,7 @@ pub fn db_query(
     sql: String,
     pool: State<ConnectionPool>,
 ) -> Result<QueryResult, String> {
+    validate_query_sql(&sql)?;
     let pool = pool.lock().map_err(|_| "Lock error")?;
     let conn = pool.get(&conn_id)
         .ok_or("Connection not found")?;
@@ -59,6 +113,7 @@ pub fn db_execute(
     sql: String,
     pool: State<ConnectionPool>,
 ) -> Result<ExecuteResult, String> {
+    validate_execute_sql(&sql)?;
     let pool = pool.lock().map_err(|_| "Lock error")?;
     let conn = pool.get(&conn_id)
         .ok_or("Connection not found")?;
@@ -82,6 +137,10 @@ pub fn db_get_columns(
     table: String,
     pool: State<ConnectionPool>,
 ) -> Result<Vec<ColumnInfo>, String> {
+    // Validate table name: only allow alphanumeric, underscore, dot (for schema.table)
+    if !table.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.') {
+        return Err("Invalid table name: only alphanumeric, underscore, and dot allowed".into());
+    }
     let pool = pool.lock().map_err(|_| "Lock error")?;
     let conn = pool.get(&conn_id)
         .ok_or("Connection not found")?;

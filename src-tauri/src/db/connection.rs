@@ -10,6 +10,7 @@ pub trait DatabaseConnection {
     fn execute(&self, sql: &str) -> Result<ExecuteResult, String>;
     fn get_tables(&self) -> Result<Vec<TableInfo>, String>;
     fn get_columns(&self, table: &str) -> Result<Vec<ColumnInfo>, String>;
+    fn is_alive(&self) -> bool;
     fn close(&self);
 }
 

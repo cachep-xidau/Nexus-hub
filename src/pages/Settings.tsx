@@ -7,6 +7,11 @@ import {
 } from '../lib/db';
 import { tauriFetch } from '../lib/tauri-fetch';
 import { encrypt, decrypt } from '../lib/crypto';
+import {
+  getConnections, addConnection, removeConnection, setActiveConnection, updateConnection, migrateLegacyKeys,
+  getActiveApiKey,
+  type AIConnection,
+} from '../lib/ai-connections';
 import { testConnection, getBoards, getBoardLists, type TrelloBoard, type TrelloList } from '../lib/trello-api';
 import {
   saveTrelloCredentials, getTrelloCredentials,
@@ -75,6 +80,12 @@ export function Settings() {
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
 
+  // ── Multi-connection state ────────────────────────
+  const [connections, setConnections] = useState<AIConnection[]>([]);
+  const [showAddConn, setShowAddConn] = useState<string | null>(null); // provider key or null
+  const [newConnName, setNewConnName] = useState('');
+  const [newConnKey, setNewConnKey] = useState('');
+
   // ── AI Providers config ───────────────────────────
   const aiProviders: AIProvider[] = [
     {
@@ -92,8 +103,7 @@ export function Settings() {
     {
       name: 'GLK-5', key: 'glk5', icon: Brain, color: '#d97706',
       fields: [
-        { key: 'baseUrl', label: 'Base URL', placeholder: 'https://api.z.ai/api/anthropic', settingKey: 'glk5_base_url' },
-        { key: 'authToken', label: 'Auth Token', placeholder: 'your-auth-token', type: 'password', settingKey: 'glk5_auth_token' },
+        { key: 'apiKey', label: 'API Key', placeholder: 'glk5-...', type: 'password', settingKey: 'glk5_api_key' },
       ],
     },
   ];
@@ -134,6 +144,11 @@ export function Settings() {
       if (active) setActiveProvider(active);
     }
     loadSettings();
+    // Migrate legacy keys and load connections
+    (async () => {
+      await migrateLegacyKeys();
+      setConnections(await getConnections());
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -166,7 +181,7 @@ export function Settings() {
     showSaved(`${aiProviders.find(p => p.key === providerKey)?.name} set as active`);
   };
 
-  // ── Save AI provider ──────────────────────────────
+  // ── Save AI provider (legacy — also add as connection) ──
   const saveAiProvider = async (providerKey: string) => {
     const provider = aiProviders.find(p => p.key === providerKey);
     if (!provider) return;
@@ -188,6 +203,91 @@ export function Settings() {
     }
   };
 
+  // ── Connection CRUD handlers ─────────────────────
+  const handleAddConnection = async () => {
+    if (!showAddConn || !newConnName.trim() || !newConnKey.trim()) return;
+    try {
+      console.log('[Settings] Adding connection:', showAddConn, newConnName.trim());
+      await addConnection({
+        provider: showAddConn,
+        name: newConnName.trim(),
+        apiKey: newConnKey.trim(),
+        isActive: false,
+        status: 'disconnected',
+      });
+      const updated = await getConnections();
+      console.log('[Settings] Connections after add:', updated.length);
+      setConnections(updated);
+      setShowAddConn(null);
+      setNewConnName('');
+      setNewConnKey('');
+      showSaved('Connection added');
+    } catch (err) {
+      console.error('[Settings] Failed to add connection:', err);
+      setTestResult({ success: false, message: '❌ Failed to add connection', details: String(err) });
+    }
+  };
+
+  const handleRemoveConnection = async (id: string) => {
+    await removeConnection(id);
+    setConnections(await getConnections());
+  };
+
+  const handleSetActive = async (id: string) => {
+    await setActiveConnection(id);
+    setConnections(await getConnections());
+    showSaved('Active connection changed');
+  };
+
+  const handleTestConnection2 = async (conn: AIConnection) => {
+    setTestingProvider(conn.id);
+    setTestResult(null);
+    try {
+      if (conn.provider === 'openai') {
+        const res = await tauriFetch('https://api.openai.com/v1/models', { headers: { 'Authorization': `Bearer ${conn.apiKey}` } });
+        const data = await res.json();
+        if (data.data) {
+          setTestResult({ success: true, message: `✅ ${conn.name} connected`, details: `${data.data.length} models` });
+          conn.status = 'connected';
+        } else {
+          setTestResult({ success: false, message: `❌ ${data.error?.message || 'Error'}` });
+          conn.status = 'error';
+        }
+      } else if (conn.provider === 'google_ai') {
+        const res = await tauriFetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${conn.apiKey}`);
+        const data = await res.json();
+        if (data.models) {
+          setTestResult({ success: true, message: `✅ ${conn.name} connected`, details: `${data.models.length} models` });
+          conn.status = 'connected';
+        } else {
+          setTestResult({ success: false, message: `❌ Google AI error`, details: JSON.stringify(data.error || data, null, 2) });
+          conn.status = 'error';
+        }
+      } else if (conn.provider === 'glk5') {
+        const res = await tauriFetch('https://api.z.ai/api/anthropic/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': conn.apiKey, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 10, messages: [{ role: 'user', content: 'Say "hi" only' }] }),
+        });
+        const data = await res.json();
+        if (data.content) {
+          setTestResult({ success: true, message: `✅ ${conn.name} connected`, details: `Model: ${data.model}` });
+          conn.status = 'connected';
+        } else {
+          setTestResult({ success: false, message: `❌ GLK-5 error`, details: JSON.stringify(data, null, 2) });
+          conn.status = 'error';
+        }
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (e: any) {
+      setTestResult({ success: false, message: '❌ Network error', details: e.message });
+    }
+    // Update connection status in storage
+    try { await updateConnection(conn.id, { status: conn.status }); } catch { /* ignore */ }
+    setConnections(await getConnections());
+    setTestingProvider(null);
+  };
+
   // ── Test AI providers ─────────────────────────────
   const testAiProvider = async (providerKey: string) => {
     setTestingProvider(providerKey);
@@ -195,7 +295,7 @@ export function Settings() {
 
     try {
       if (providerKey === 'openai') {
-        const key = await getSetting('openai_api_key');
+        const key = await getActiveApiKey('openai') || await getSetting('openai_api_key');
         if (!key) { setTestResult({ success: false, message: '❌ No OpenAI key saved' }); setTestingProvider(null); return; }
         const res = await tauriFetch('https://api.openai.com/v1/models', {
           headers: { 'Authorization': `Bearer ${key}` },
@@ -211,7 +311,7 @@ export function Settings() {
       }
 
       else if (providerKey === 'google_ai') {
-        const key = await getSetting('google_ai_api_key');
+        const key = await getActiveApiKey('google_ai') || await getSetting('google_ai_api_key');
         if (!key) { setTestResult({ success: false, message: '❌ No Google AI key saved' }); setTestingProvider(null); return; }
         const res = await tauriFetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
         const data = await res.json();
@@ -227,15 +327,14 @@ export function Settings() {
       }
 
       else if (providerKey === 'glk5') {
-        const baseUrl = await getSetting('glk5_base_url');
-        const token = await getSetting('glk5_auth_token');
-        if (!baseUrl || !token) { setTestResult({ success: false, message: '❌ No GLK-5 credentials saved' }); setTestingProvider(null); return; }
+        const apiKey = await getActiveApiKey('glk5') || await getSetting('glk5_api_key');
+        if (!apiKey) { setTestResult({ success: false, message: '❌ No GLK-5 API key saved' }); setTestingProvider(null); return; }
 
-        const res = await tauriFetch(`${baseUrl}/v1/messages`, {
+        const res = await tauriFetch('https://api.z.ai/api/anthropic/v1/messages', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-api-key': token,
+            'x-api-key': apiKey,
             'anthropic-version': '2023-06-01',
           },
           body: JSON.stringify({
@@ -345,6 +444,7 @@ export function Settings() {
           {aiProviders.map((provider) => {
             const isActive = activeProvider === provider.key;
             const status = aiStatus[provider.key];
+            const providerConns = connections.filter(c => c.provider === provider.key);
 
             return (
               <div
@@ -362,7 +462,7 @@ export function Settings() {
                       <div className="settings-card-name">{provider.name}</div>
                       <div className="settings-card-status">
                         {statusIcon(status)}
-                        <span>{status === 'connected' ? 'Connected' : status === 'error' ? 'Error' : 'Not set'}</span>
+                        <span>{providerConns.length} connection{providerConns.length !== 1 ? 's' : ''}</span>
                       </div>
                     </div>
                   </div>
@@ -377,39 +477,123 @@ export function Settings() {
                   </button>
                 </div>
 
-                {/* Card Body — Fields */}
+                {/* Connections list */}
                 <div className="settings-card-body">
-                  {provider.fields.map((field) => (
-                    <div key={field.key} className="settings-card-field">
-                      <label className="settings-card-label">{field.label}</label>
-                      <input
-                        className="form-input"
-                        type={field.type || 'text'}
-                        placeholder={field.placeholder}
-                        value={aiData[provider.key]?.[field.key] || ''}
-                        onChange={(e) => updateAiField(provider.key, field.key, e.target.value)}
-                      />
+                  {providerConns.length === 0 && (
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', padding: '0.5rem 0' }}>
+                      No connections yet
+                    </div>
+                  )}
+                  {providerConns.map(conn => (
+                    <div key={conn.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '0.5rem',
+                      padding: '0.4rem 0.5rem', borderRadius: 'var(--radius-sm)',
+                      background: conn.isActive ? `${provider.color}10` : 'transparent',
+                      border: conn.isActive ? `1px solid ${provider.color}30` : '1px solid transparent',
+                      marginBottom: '0.25rem',
+                    }}>
+                      <button
+                        onClick={() => handleSetActive(conn.id)}
+                        title={conn.isActive ? 'Active' : 'Set active'}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: conn.isActive ? provider.color : 'var(--text-muted)' }}
+                      >
+                        {conn.isActive ? <Star size={12} fill="currentColor" /> : <Star size={12} />}
+                      </button>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 'var(--text-xs)', fontWeight: conn.isActive ? 600 : 400, color: conn.isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                          {conn.name}
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                          {conn.apiKey.slice(0, 8)}...{conn.apiKey.slice(-4)}
+                        </div>
+                      </div>
+                      <button
+                        className="icon-btn-subtle"
+                        onClick={() => handleTestConnection2(conn)}
+                        disabled={testingProvider !== null}
+                        title="Test"
+                        style={{ padding: '2px' }}
+                      >
+                        {testingProvider === conn.id ? <Loader2 size={12} className="spinning" /> : <Zap size={12} />}
+                      </button>
+                      <button
+                        className="icon-btn-subtle"
+                        onClick={() => handleRemoveConnection(conn.id)}
+                        title="Remove"
+                        style={{ padding: '2px', color: 'var(--text-muted)' }}
+                      >
+                        <X size={12} />
+                      </button>
                     </div>
                   ))}
+
+                  {/* Add connection inline */}
+                  {showAddConn === provider.key ? (
+                    <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      <input
+                        className="form-input"
+                        placeholder="Connection name"
+                        value={newConnName}
+                        onChange={e => setNewConnName(e.target.value)}
+                        style={{ fontSize: 'var(--text-xs)' }}
+                        autoFocus
+                      />
+                      <input
+                        className="form-input"
+                        type="password"
+                        placeholder="API Key"
+                        value={newConnKey}
+                        onChange={e => setNewConnKey(e.target.value)}
+                        style={{ fontSize: 'var(--text-xs)' }}
+                      />
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <button className="btn btn-primary btn-sm" onClick={handleAddConnection}
+                          disabled={!newConnName.trim() || !newConnKey.trim()}
+                          style={{ fontSize: 'var(--text-xs)' }}>
+                          Add
+                        </button>
+                        <button className="btn btn-sm" onClick={() => { setShowAddConn(null); setNewConnName(''); setNewConnKey(''); }}
+                          style={{ fontSize: 'var(--text-xs)', background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setShowAddConn(provider.key)}
+                      style={{ marginTop: '0.5rem', fontSize: 'var(--text-xs)', background: 'var(--bg-surface)', border: '1px solid var(--border)', width: '100%' }}
+                    >
+                      + Add Connection
+                    </button>
+                  )}
                 </div>
 
-                {/* Card Footer — Actions */}
-                <div className="settings-card-actions">
-                  <button className="btn btn-primary btn-sm" onClick={() => saveAiProvider(provider.key)}>
-                    Save
-                  </button>
-                  <button
-                    className="btn btn-sm"
-                    onClick={() => testAiProvider(provider.key)}
-                    disabled={testingProvider !== null}
-                    style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
-                  >
-                    {testingProvider === provider.key
-                      ? <><Loader2 size={12} className="spinning" /> Testing...</>
-                      : <><Zap size={12} /> Test</>
-                    }
-                  </button>
-                </div>
+                {/* Legacy quick-add (for backward compat) */}
+                <details style={{ padding: '0 0.75rem 0.75rem' }}>
+                  <summary style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-muted)', cursor: 'pointer' }}>Quick Add (legacy)</summary>
+                  <div style={{ marginTop: '0.35rem' }}>
+                    {provider.fields.map((field) => (
+                      <div key={field.key} className="settings-card-field">
+                        <label className="settings-card-label">{field.label}</label>
+                        <input
+                          className="form-input"
+                          type={field.type || 'text'}
+                          placeholder={field.placeholder}
+                          value={aiData[provider.key]?.[field.key] || ''}
+                          onChange={(e) => updateAiField(provider.key, field.key, e.target.value)}
+                        />
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.35rem' }}>
+                      <button className="btn btn-primary btn-sm" onClick={() => saveAiProvider(provider.key)} style={{ fontSize: 'var(--text-xs)' }}>Save</button>
+                      <button className="btn btn-sm" onClick={() => testAiProvider(provider.key)} disabled={testingProvider !== null}
+                        style={{ fontSize: 'var(--text-xs)', background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                        {testingProvider === provider.key ? <><Loader2 size={12} className="spinning" /> Testing...</> : <><Zap size={12} /> Test</>}
+                      </button>
+                    </div>
+                  </div>
+                </details>
               </div>
             );
           })}

@@ -45,13 +45,12 @@ import {
 const SIDEBAR_COLLAPSED_KEY = 'ui.sidebarCollapsed';
 const SIDEBAR_SECTIONS_KEY = 'ui.sidebarSections';
 
-type SidebarSectionKey = 'main' | 'knowledge' | 'repo' | 'channels' | 'system' | 'sanMarketing';
+type SidebarSectionKey = 'main' | 'knowledge' | 'channels' | 'system' | 'sanMarketing';
 type SidebarSectionState = Record<SidebarSectionKey, boolean>;
 
 const DEFAULT_SECTION_STATE: SidebarSectionState = {
   main: true,
   knowledge: true,
-  repo: true,
   channels: true,
   system: true,
   sanMarketing: false,
@@ -67,10 +66,6 @@ const baseMainItems = [
 
 const knowledgeItems = [
   { href: '/knowledge', label: 'All Domains', icon: BookOpen },
-];
-
-const repoItems = [
-  { href: '/repo', label: 'Projects', icon: Database },
 ];
 
 const channelItems = [
@@ -249,7 +244,6 @@ export function Sidebar() {
     const stored = readStoredSections();
     if (location.pathname.startsWith('/san-marketing')) stored.sanMarketing = true;
     if (location.pathname.startsWith('/knowledge')) stored.knowledge = true;
-    if (location.pathname.startsWith('/repo')) stored.repo = true;
     return stored;
   });
 
@@ -285,7 +279,6 @@ export function Sidebar() {
   };
 
   const isKnowledgeSectionOpen = sectionsOpen.knowledge || location.pathname.startsWith('/knowledge');
-  const isRepoSectionOpen = sectionsOpen.repo || location.pathname.startsWith('/repo');
   const isSanSectionOpen = sectionsOpen.sanMarketing || location.pathname.startsWith('/san-marketing');
 
   const pathParts = location.pathname.split('/').filter(Boolean);
@@ -371,36 +364,14 @@ export function Sidebar() {
               </div>
             )}
 
-            <button
-              type="button"
-              className={`nav-item nav-group-toggle ${sectionsOpen.repo ? 'open' : ''}`}
-              onClick={() => {
-                if (sidebarCollapsed) navigate('/repo');
-                else toggleSection('repo');
-              }}
+            <Link
+              to="/repo"
+              className={`nav-item ${location.pathname.startsWith('/repo') ? 'active' : ''}`}
               title="Repo"
             >
               <Database className="icon" size={18} />
               <span className="nav-label">Repo</span>
-              <span className="nav-chevron">
-                {isRepoSectionOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              </span>
-            </button>
-            {isRepoSectionOpen && !sidebarCollapsed && (
-              <div className="nav-sub-items">
-                {repoItems.map(item => (
-                  <Link
-                    key={item.href}
-                    to={item.href}
-                    className={`nav-item nav-sub-item ${location.pathname.startsWith(item.href) ? 'active' : ''}`}
-                    title={item.label}
-                  >
-                    <item.icon className="icon" size={16} />
-                    <span className="nav-label">{item.label}</span>
-                  </Link>
-                ))}
-              </div>
-            )}
+            </Link>
           </>
         )}
 

@@ -492,8 +492,13 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 /* ── Sidebar ─────────────────────────────────────── */
@@ -5240,6 +5245,104 @@ body {
   color: var(--text-secondary);
   white-space: pre-wrap;
   margin: 0;
+}
+
+/* ── Epics Chat extras ─────────────────────────────── */
+
+.epics-prd-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: rgba(52, 199, 89, 0.08);
+  border-bottom: 1px solid rgba(52, 199, 89, 0.15);
+  font-size: var(--text-xs);
+  color: var(--green);
+}
+
+.epics-prd-input {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--card-border);
+}
+
+.epics-prd-input-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+
+.epics-prd-textarea {
+  width: 100%;
+  padding: var(--space-2);
+  background: var(--bg-secondary);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  resize: vertical;
+  outline: none;
+}
+
+.epics-prd-textarea:focus {
+  border-color: var(--accent);
+}
+
+/* ── Drag handle for all chat panels ───────────────── */
+
+.chat-panel-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background 0.15s ease;
+}
+
+.chat-panel-resize-handle:hover,
+.chat-panel-resize-handle:active {
+  background: var(--accent);
+  opacity: 0.4;
+}
+
+/* ── PRD source picker ─────────────────────────────── */
+
+.epics-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--space-2);
+}
+
+.epics-source-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-secondary);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+}
+
+.epics-source-btn:hover {
+  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.epics-source-btn.active {
+  border-color: var(--accent);
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--accent);
 }
 
 /* ═══════════════════════════════════════════════════

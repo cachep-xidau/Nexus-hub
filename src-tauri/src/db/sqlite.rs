@@ -92,7 +92,9 @@ impl DatabaseConnection for SqliteConnection {
     }
 
     fn get_columns(&self, table: &str) -> Result<Vec<ColumnInfo>, String> {
-        let sql = format!("PRAGMA table_info({})", table);
+        // Quote identifier to prevent SQL injection
+        let safe_table = table.replace('"', "\"\"");
+        let sql = format!("PRAGMA table_info(\"{}\")", safe_table);
         let mut stmt = self.conn.prepare(&sql)
             .map_err(|e| format!("Error: {}", e))?;
 
@@ -107,6 +109,10 @@ impl DatabaseConnection for SqliteConnection {
         }).map_err(|e| format!("Error: {}", e))?;
 
         Ok(columns.filter_map(|c| c.ok()).collect())
+    }
+
+    fn is_alive(&self) -> bool {
+        self.conn.execute("SELECT 1", []).is_ok()
     }
 
     fn close(&self) {

@@ -5,6 +5,7 @@ import {
     Send, Loader2, Trash2, Eye, X, Save, Download, Bot, User,
 } from 'lucide-react';
 import { chatStream } from '../../lib/ai';
+import { useResizablePanel } from '../../lib/hooks/use-resizable-panel';
 import {
     useAnalysisDocs,
     useCreateAnalysisDoc,
@@ -60,6 +61,7 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
     const [previewDoc, setPreviewDoc] = useState<AnalysisDoc | null>(null);
     const endRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const { panelStyle: sliderStyle, onMouseDown: onSliderMouseDown } = useResizablePanel(720, 400, 85);
 
     const docsQuery = useAnalysisDocs(projectId);
     const createDocMutation = useCreateAnalysisDoc();
@@ -218,7 +220,10 @@ export function AnalysisTab({ projectId, projectName }: AnalysisTabProps) {
             {/* ── Analysis Slider (portaled to body to escape overflow:hidden) ── */}
             {activeChat && activeCard && createPortal(
                 <div className="analysis-slider-overlay" onClick={closeSlider}>
-                    <div className="analysis-slider-panel" onClick={(e) => e.stopPropagation()}>
+                    <div className="analysis-slider-panel" onClick={(e) => e.stopPropagation()} style={sliderStyle}>
+                        {/* Resize handle */}
+                        <div className="chat-panel-resize-handle" onMouseDown={onSliderMouseDown} />
+
                         {/* Header */}
                         <div className="analysis-slider-header">
                             <div className="analysis-slider-header-left">

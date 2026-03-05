@@ -16,6 +16,7 @@ export interface ApiProject extends BaseEntity {
   name: string;
   description: string | null;
   prdContent: string | null;
+  epicsContent: string | null;
   _count?: {
     features: number;
     artifacts: number;
@@ -102,6 +103,7 @@ export interface RepoProject {
   name: string;
   description: string | null;
   prd_content: string | null;
+  epics_content: string | null;
   created_at: number;
   updated_at: number;
   _count?: {
@@ -206,6 +208,8 @@ export type UpdateProjectInput = {
   description?: string;
   prd_content?: string;
   prdContent?: string;
+  epics_content?: string;
+  epicsContent?: string;
 };
 
 export type CreateFeatureInput = {

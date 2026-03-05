@@ -1,3 +1,5 @@
+// ── Artifacts Hooks ─────────────────────────────────────────────────────────
+// API-first with localStorage fallback when backend is unavailable.
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api-client';
 import { repoKeys } from './keys';
@@ -10,6 +12,15 @@ import type {
   UpdateArtifactInput,
 } from './types';
 import { isoToTimestamp } from './types';
+import {
+  localGetArtifact,
+  localGetArtifactsByProject,
+  localGetArtifactTree,
+  localCreateArtifact,
+  localUpdateArtifact,
+  localDeleteArtifact,
+  localArchiveArtifact,
+} from '../../repo-local-store';
 
 function mapArtifact(artifact: ApiArtifact): RepoArtifact {
   return {
@@ -70,8 +81,14 @@ export function useArtifact(id: string) {
   return useQuery({
     queryKey: repoKeys.artifact(id),
     queryFn: async () => {
-      const artifact = await api.get<ApiArtifact>(`/api/artifacts/${id}`);
-      return mapArtifact(artifact);
+      try {
+        const artifact = await api.get<ApiArtifact>(`/api/artifacts/${id}`);
+        return mapArtifact(artifact);
+      } catch {
+        const local = localGetArtifact(id);
+        if (!local) throw new Error('Artifact not found');
+        return local;
+      }
     },
     enabled: !!id,
   });
@@ -81,8 +98,12 @@ export function useArtifactsByProject(projectId: string) {
   return useQuery({
     queryKey: repoKeys.artifactsByProject(projectId),
     queryFn: async () => {
-      const artifacts = await api.get<ApiArtifact[]>(`/api/projects/${projectId}/artifacts`);
-      return artifacts.map(mapArtifact);
+      try {
+        const artifacts = await api.get<ApiArtifact[]>(`/api/projects/${projectId}/artifacts`);
+        return artifacts.map(mapArtifact);
+      } catch {
+        return localGetArtifactsByProject(projectId);
+      }
     },
     enabled: !!projectId,
   });
@@ -92,11 +113,15 @@ export function useArtifactTree(projectId: string, statusFilter?: string) {
   return useQuery({
     queryKey: repoKeys.artifactTree(projectId, statusFilter),
     queryFn: async () => {
-      const [features, artifacts] = await Promise.all([
-        api.get<ApiFeature[]>(`/api/projects/${projectId}/features`),
-        api.get<ApiArtifact[]>(`/api/projects/${projectId}/artifacts`),
-      ]);
-      return buildArtifactTree(features, artifacts, statusFilter);
+      try {
+        const [features, artifacts] = await Promise.all([
+          api.get<ApiFeature[]>(`/api/projects/${projectId}/features`),
+          api.get<ApiArtifact[]>(`/api/projects/${projectId}/artifacts`),
+        ]);
+        return buildArtifactTree(features, artifacts, statusFilter);
+      } catch {
+        return localGetArtifactTree(projectId, statusFilter);
+      }
     },
     enabled: !!projectId,
   });
@@ -105,16 +130,23 @@ export function useArtifactTree(projectId: string, statusFilter?: string) {
 export function useCreateArtifact() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: CreateArtifactInput) => api.post<ApiArtifact>('/api/artifacts', data),
+    mutationFn: async (data: CreateArtifactInput) => {
+      try {
+        const created = await api.post<ApiArtifact>('/api/artifacts', data);
+        return mapArtifact(created);
+      } catch {
+        return localCreateArtifact(data);
+      }
+    },
     onSuccess: (artifact) => {
-      if (!artifact.projectId) {
+      if (!artifact.project_id) {
         queryClient.invalidateQueries({ queryKey: repoKeys.all });
         return;
       }
-      queryClient.invalidateQueries({ queryKey: repoKeys.artifactsByProject(artifact.projectId) });
-      queryClient.invalidateQueries({ queryKey: repoKeys.artifactTree(artifact.projectId) });
-      if (artifact.functionId) {
-        queryClient.invalidateQueries({ queryKey: repoKeys.functions(artifact.functionId) });
+      queryClient.invalidateQueries({ queryKey: repoKeys.artifactsByProject(artifact.project_id) });
+      queryClient.invalidateQueries({ queryKey: repoKeys.artifactTree(artifact.project_id) });
+      if (artifact.function_id) {
+        queryClient.invalidateQueries({ queryKey: repoKeys.functions(artifact.function_id) });
       }
     },
   });
@@ -123,8 +155,14 @@ export function useCreateArtifact() {
 export function useUpdateArtifact() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateArtifactInput }) =>
-      api.put<ApiArtifact>(`/api/artifacts/${id}`, data),
+    mutationFn: async ({ id, data }: { id: string; data: UpdateArtifactInput }) => {
+      try {
+        const updated = await api.put<ApiArtifact>(`/api/artifacts/${id}`, data);
+        return mapArtifact(updated);
+      } catch {
+        return localUpdateArtifact(id, data);
+      }
+    },
     onMutate: async ({ id, data }) => {
       await queryClient.cancelQueries({ queryKey: repoKeys.artifact(id) });
       const previous = queryClient.getQueryData<RepoArtifact>(repoKeys.artifact(id));
@@ -136,15 +174,8 @@ export function useUpdateArtifact() {
     onError: (_error, { id }, context) => {
       queryClient.setQueryData(repoKeys.artifact(id), context?.previous);
     },
-    onSuccess: (artifact) => {
-      if (artifact.projectId) {
-        queryClient.invalidateQueries({ queryKey: repoKeys.artifactsByProject(artifact.projectId) });
-        queryClient.invalidateQueries({ queryKey: repoKeys.artifactTree(artifact.projectId) });
-      }
-      queryClient.setQueryData(repoKeys.artifact(artifact.id), mapArtifact(artifact));
-    },
-    onSettled: (_data, _error, { id }) => {
-      queryClient.invalidateQueries({ queryKey: repoKeys.artifact(id) });
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: repoKeys.all });
     },
   });
 }
@@ -152,7 +183,13 @@ export function useUpdateArtifact() {
 export function useDeleteArtifact() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.del<{ success: boolean }>(`/api/artifacts/${id}`),
+    mutationFn: async (id: string) => {
+      try {
+        await api.del<{ success: boolean }>(`/api/artifacts/${id}`);
+      } catch {
+        localDeleteArtifact(id);
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repoKeys.all });
     },
@@ -163,16 +200,17 @@ export function useArchiveArtifact() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const artifact = await api.get<ApiArtifact>(`/api/artifacts/${id}`);
-      const nextStatus = artifact.status.toLowerCase() === 'current' ? 'ARCHIVED' : 'CURRENT';
-      return api.put<ApiArtifact>(`/api/artifacts/${id}`, { status: nextStatus });
-    },
-    onSuccess: (artifact) => {
-      queryClient.invalidateQueries({ queryKey: repoKeys.artifact(artifact.id) });
-      if (artifact.projectId) {
-        queryClient.invalidateQueries({ queryKey: repoKeys.artifactsByProject(artifact.projectId) });
-        queryClient.invalidateQueries({ queryKey: repoKeys.artifactTree(artifact.projectId) });
+      try {
+        const artifact = await api.get<ApiArtifact>(`/api/artifacts/${id}`);
+        const nextStatus = artifact.status.toLowerCase() === 'current' ? 'ARCHIVED' : 'CURRENT';
+        const updated = await api.put<ApiArtifact>(`/api/artifacts/${id}`, { status: nextStatus });
+        return mapArtifact(updated);
+      } catch {
+        return localArchiveArtifact(id);
       }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: repoKeys.all });
     },
   });
 }

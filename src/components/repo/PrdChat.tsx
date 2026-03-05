@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { chatStream } from '../../lib/ai';
 import { useUpdateProject } from '../../lib/hooks/use-repo-api';
+import { useResizablePanel } from '../../lib/hooks/use-resizable-panel';
 
 // BMAD PRD steps
 const PRD_STEPS = [
@@ -35,6 +36,7 @@ interface PrdChatProps {
 
 export function PrdChat({ projectId, projectName, existingPrd, onClose, onPrdSaved }: PrdChatProps) {
     const updateProjectMutation = useUpdateProject();
+    const { panelStyle, onMouseDown } = useResizablePanel(420, 360, 80);
     const [messages, setMessages] = useState<ChatMessage[]>(() => {
         const greeting = existingPrd
             ? `Tôi sẽ giúp bạn **chỉnh sửa PRD** cho project **"${projectName}"**.\n\nMô tả mục tiêu chỉnh sửa của bạn:`
@@ -128,7 +130,10 @@ export function PrdChat({ projectId, projectName, existingPrd, onClose, onPrdSav
     };
 
     return (
-        <div className="prd-chat-panel">
+        <div className="prd-chat-panel" style={panelStyle}>
+            {/* Resize handle */}
+            <div className="chat-panel-resize-handle" onMouseDown={onMouseDown} />
+
             {/* Header */}
             <div className="prd-chat-header">
                 <MessageSquare size={18} style={{ color: 'var(--accent)' }} />

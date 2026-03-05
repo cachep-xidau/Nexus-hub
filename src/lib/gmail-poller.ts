@@ -62,13 +62,15 @@ async function fetchNewEmails(accessToken: string, accountId: string, since?: nu
         sender_name: parsedFrom.senderName,
         sender_email: parsedFrom.senderEmail,
         snippet: msgData.snippet || '',
-        body: bodyText.slice(0, 2000), // Limit body size
+        body: bodyText.length > 2000 ? bodyText.slice(0, 2000) + '\n[...truncated]' : bodyText,
         category: 'uncategorized',
         timestamp: parseInt(msgData.internalDate) || Date.parse(date) || Date.now(),
         is_read: !msgData.labelIds?.includes('UNREAD'),
         labels: (msgData.labelIds || []).join(','),
       });
-    } catch { /* skip failed messages */ }
+    } catch (msgErr) {
+      console.warn(`[Gmail] Failed to fetch message ${item.id}:`, msgErr instanceof Error ? msgErr.message : msgErr);
+    }
   }
 
   return emails;
@@ -92,7 +94,10 @@ export async function syncGmailNow(): Promise<{ count: number }> {
     let total = 0;
     for (const account of accounts) {
       const accessToken = await refreshAccountToken(account.id);
-      if (!accessToken) continue;
+      if (!accessToken) {
+        console.warn(`[Gmail] Token refresh failed for account ${account.id}, skipping`);
+        continue;
+      }
       const syncKey = `gmail_last_sync_${account.id}`;
       const lastSyncRaw = await getSetting(syncKey);
       const parsedSync = lastSyncRaw ? Number(lastSyncRaw) : NaN;

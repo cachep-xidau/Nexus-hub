@@ -1,5 +1,21 @@
 import { tauriFetch } from './tauri-fetch';
 import { getSetting } from './db';
+import { getActiveApiKey } from './ai-connections';
+
+const GLK5_BASE_URL = 'https://api.z.ai/api/anthropic';
+
+// ── Rate limiter ────────────────────────────────────
+let _lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL_MS = 1000;
+
+async function rateLimitGuard(): Promise<void> {
+  const now = Date.now();
+  const elapsed = now - _lastRequestTime;
+  if (elapsed < MIN_REQUEST_INTERVAL_MS) {
+    await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL_MS - elapsed));
+  }
+  _lastRequestTime = Date.now();
+}
 
 const SYSTEM_PROMPT = `You are Nexus, an AI assistant embedded in a Kanban-based project management hub. You help users manage tasks from multiple communication channels (Slack, Gmail, Telegram).
 
@@ -26,29 +42,27 @@ export async function detectProvider(): Promise<ProviderConfig | null> {
   const active = await getSetting('active_ai_provider');
   if (active) {
     if (active === 'glk5') {
-      const t = await getSetting('glk5_auth_token');
-      const u = await getSetting('glk5_base_url');
-      if (t && u) return { provider: 'glk5', label: 'GLK-5 (Claude)' };
+      const t = await getActiveApiKey('glk5') || await getSetting('glk5_api_key');
+      if (t) return { provider: 'glk5', label: 'GLK-5 (Claude)' };
     }
     if (active === 'google_ai') {
-      const k = await getSetting('google_ai_api_key');
+      const k = await getActiveApiKey('google_ai') || await getSetting('google_ai_api_key');
       if (k) return { provider: 'google_ai', label: 'Google AI (Gemini)' };
     }
     if (active === 'openai') {
-      const k = await getSetting('openai_api_key');
+      const k = await getActiveApiKey('openai') || await getSetting('openai_api_key');
       if (k) return { provider: 'openai', label: 'OpenAI' };
     }
   }
 
   // 2. Fallback: first configured provider
-  const glk5Token = await getSetting('glk5_auth_token');
-  const glk5Url = await getSetting('glk5_base_url');
-  if (glk5Token && glk5Url) return { provider: 'glk5', label: 'GLK-5 (Claude)' };
+  const glk5Key = await getActiveApiKey('glk5') || await getSetting('glk5_api_key');
+  if (glk5Key) return { provider: 'glk5', label: 'GLK-5 (Claude)' };
 
-  const googleKey = await getSetting('google_ai_api_key');
+  const googleKey = await getActiveApiKey('google_ai') || await getSetting('google_ai_api_key');
   if (googleKey) return { provider: 'google_ai', label: 'Google AI (Gemini)' };
 
-  const openaiKey = await getSetting('openai_api_key');
+  const openaiKey = await getActiveApiKey('openai') || await getSetting('openai_api_key');
   if (openaiKey) return { provider: 'openai', label: 'OpenAI' };
 
   return null;
@@ -58,9 +72,12 @@ export async function detectProvider(): Promise<ProviderConfig | null> {
 export async function chatStream(
   messages: { role: string; content: string }[],
   onChunk: (text: string) => void,
-  onDone: () => void
+  onDone: () => void,
+  onError?: (error: Error) => void,
 ) {
   try {
+    await rateLimitGuard();
+
     const config = await detectProvider();
     if (!config) {
       onChunk('⚠️ No AI provider configured. Go to **Settings** → add API keys.');
@@ -80,7 +97,12 @@ export async function chatStream(
         break;
     }
   } catch (error) {
-    onChunk(`\n\n⚠️ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    const err = error instanceof Error ? error : new Error(String(error));
+    if (onError) {
+      onError(err);
+    } else {
+      onChunk(`\n\n⚠️ Error: ${err.message}`);
+    }
   } finally {
     onDone();
   }
@@ -91,10 +113,10 @@ async function streamGLK5(
   messages: { role: string; content: string }[],
   onChunk: (text: string) => void
 ) {
-  const baseUrl = await getSetting('glk5_base_url') || '';
-  const token = await getSetting('glk5_auth_token') || '';
+  const token = await getActiveApiKey('glk5') || await getSetting('glk5_api_key');
+  if (!token) throw new Error('GLK-5 API key not configured. Go to Settings → AI Connections.');
 
-  const res = await tauriFetch(`${baseUrl}/v1/messages`, {
+  const res = await tauriFetch(`${GLK5_BASE_URL}/v1/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -124,7 +146,8 @@ async function streamGoogleAI(
   messages: { role: string; content: string }[],
   onChunk: (text: string) => void
 ) {
-  const key = await getSetting('google_ai_api_key') || '';
+  const key = await getActiveApiKey('google_ai') || await getSetting('google_ai_api_key');
+  if (!key) throw new Error('Google AI API key not configured. Go to Settings → AI Connections.');
 
   // Build Gemini content format
   const contents = [
@@ -137,10 +160,10 @@ async function streamGoogleAI(
   ];
 
   const res = await tauriFetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({ contents }),
     }
   );
@@ -160,7 +183,8 @@ async function streamOpenAI(
   messages: { role: string; content: string }[],
   onChunk: (text: string) => void
 ) {
-  const key = await getSetting('openai_api_key') || '';
+  const key = await getActiveApiKey('openai') || await getSetting('openai_api_key');
+  if (!key) throw new Error('OpenAI API key not configured. Go to Settings → AI Connections.');
 
   const res = await tauriFetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -192,14 +216,16 @@ export async function generateCompletion(
   const config = await detectProvider();
   if (!config) throw new Error('No AI provider configured. Go to Settings → add API keys.');
 
+  await rateLimitGuard();
+
   // Detect if the prompt is requesting JSON output (for prototype generation)
   const wantsJson = systemPrompt.includes('valid JSON object') || userPrompt.includes('JSON output');
 
   switch (config.provider) {
     case 'glk5': {
-      const baseUrl = await getSetting('glk5_base_url') || '';
-      const token = await getSetting('glk5_auth_token') || '';
-      const res = await tauriFetch(`${baseUrl}/v1/messages`, {
+      const token = await getActiveApiKey('glk5') || await getSetting('glk5_api_key');
+      if (!token) throw new Error('GLK-5 API key not configured.');
+      const res = await tauriFetch(`${GLK5_BASE_URL}/v1/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -222,7 +248,8 @@ export async function generateCompletion(
     }
 
     case 'google_ai': {
-      const key = await getSetting('google_ai_api_key') || '';
+      const key = await getActiveApiKey('google_ai') || await getSetting('google_ai_api_key');
+      if (!key) throw new Error('Google AI API key not configured.');
       const contents = [
         { role: 'user', parts: [{ text: systemPrompt }] },
         { role: 'model', parts: [{ text: 'Understood. Ready to generate.' }] },
@@ -238,10 +265,10 @@ export async function generateCompletion(
       }
 
       const res = await tauriFetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
           body: JSON.stringify({ contents, generationConfig }),
         }
       );
@@ -254,7 +281,8 @@ export async function generateCompletion(
     }
 
     case 'openai': {
-      const key = await getSetting('openai_api_key') || '';
+      const key = await getActiveApiKey('openai') || await getSetting('openai_api_key');
+      if (!key) throw new Error('OpenAI API key not configured.');
       const body: Record<string, unknown> = {
         model: 'gpt-4o',
         messages: [
