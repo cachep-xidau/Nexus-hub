@@ -9,7 +9,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string | null;
-  emailVerified: Date | null;
+  emailVerified: boolean;
 }
 
 export interface AuthContextType {
@@ -24,6 +24,7 @@ export interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
@@ -53,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: session.id,
         email: session.email,
         name: session.name || null,
-        emailVerified: null,
+        emailVerified: Boolean(session.emailVerified),
       };
       setUserState(authUser);
       await setUser(authUser);
@@ -78,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: response.user.id,
         email: response.user.email,
         name: response.user.name || null,
-        emailVerified: null,
+        emailVerified: Boolean(response.user.emailVerified),
       };
       setUserState(authUser);
       await setToken(response.token);
@@ -92,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function register(email: string, password: string, name?: string): Promise<void> {
+    sessionCheckId.current++; // Invalidate any pending session check
     setIsLoading(true);
     setError(null);
     try {
@@ -100,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: response.user.id,
         email: response.user.email,
         name: response.user.name || null,
-        emailVerified: null,
+        emailVerified: Boolean(response.user.emailVerified),
       };
       setUserState(authUser);
       await setToken(response.token);
@@ -114,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function logout(): Promise<void> {
+    sessionCheckId.current++; // Invalidate any pending session check
     setIsLoading(true);
     try {
       await api.logout();
@@ -143,5 +146,3 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
-
-export { AuthContext };

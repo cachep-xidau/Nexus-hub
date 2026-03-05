@@ -11,6 +11,7 @@ export interface User {
   id: string;
   email: string;
   name?: string;
+  emailVerified?: boolean;
   createdAt?: string;
 }
 
@@ -122,7 +123,7 @@ class ApiClient {
   }
 
   async getSession(): Promise<User> {
-    return this.request<User>('/auth/session');
+    return this.request<User>('/auth/get-session');
   }
 
   // Generic CRUD methods
@@ -130,14 +131,14 @@ class ApiClient {
     return this.request<T>(endpoint, { method: 'GET' });
   }
 
-  async post<T>(endpoint: string, data?: any): Promise<T> {
+  async post<T>(endpoint: string, data?: unknown): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
     });
   }
 
-  async put<T>(endpoint: string, data?: any): Promise<T> {
+  async put<T>(endpoint: string, data?: unknown): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PUT',
       body: data ? JSON.stringify(data) : undefined,

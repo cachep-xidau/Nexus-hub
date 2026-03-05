@@ -13,7 +13,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     hasError: false,
   };
 
-  static getDerivedStateFromError(_error: Error): AppErrorBoundaryState {
+  static getDerivedStateFromError(): AppErrorBoundaryState {
     return {
       hasError: true,
     };

@@ -30,12 +30,16 @@ describe('useOnboarding Hook', () => {
 
   describe('initial state', () => {
     it('should start with isLoading=true and isCompleted=false', () => {
-      mockGetOnboardingStatus.mockResolvedValue({ completed: false });
+      mockGetOnboardingStatus.mockImplementation(
+        () => new Promise(() => undefined as never)
+      );
 
-      const { result } = renderHook(() => useOnboarding());
+      const { result, unmount } = renderHook(() => useOnboarding());
 
       expect(result.current.isCompleted).toBe(false);
       expect(result.current.isLoading).toBe(true);
+
+      unmount();
     });
 
     it('should load and set isCompleted from storage', async () => {
@@ -106,11 +110,9 @@ describe('useOnboarding Hook', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      const before = new Date().toISOString();
       await act(async () => {
         await result.current.completeOnboarding();
       });
-      const after = new Date().toISOString();
 
       expect(result.current.isCompleted).toBe(true);
       // completedAt is set internally by the hook but not exposed

@@ -10,7 +10,13 @@ export interface OnboardingStatus {
 const ONBOARDING_KEY = 'nexus_onboarding_completed';
 const STORE_PATH = 'onboarding.json';
 
-let _store: any | null = null;
+interface StoreAdapter {
+  get<T>(key: string): Promise<T | null>;
+  set(key: string, value: unknown): Promise<void>;
+  save(): Promise<void>;
+}
+
+let _store: StoreAdapter | null = null;
 let _storeLoaded = false;
 
 // Lazy load tauri-plugin-store (v2 uses static factory method)
@@ -18,7 +24,7 @@ async function getStore() {
   if (_storeLoaded) return _store;
   try {
     const { Store } = await import('@tauri-apps/plugin-store');
-    _store = await Store.load(STORE_PATH);
+    _store = await Store.load(STORE_PATH) as StoreAdapter;
     _storeLoaded = true;
     return _store;
   } catch {

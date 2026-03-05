@@ -3,6 +3,7 @@
 // Stores repos data in localStorage as a simple JSON store.
 
 import type {
+    RepoCompany,
     RepoProject,
     RepoFeature,
     RepoFunction,
@@ -12,7 +13,9 @@ import type {
     RepoEpic,
     RepoStory,
     CreateProjectInput,
+    CreateCompanyInput,
     UpdateProjectInput,
+    UpdateCompanyInput,
     CreateFeatureInput,
     UpdateFeatureInput,
     CreateFunctionInput,
@@ -30,6 +33,7 @@ import type {
 const LS_KEY = 'nexus_repo_local';
 
 interface LocalStore {
+    companies: RepoCompany[];
     projects: RepoProject[];
     features: RepoFeature[];
     functions: RepoFunction[];
@@ -41,14 +45,14 @@ interface LocalStore {
 }
 
 function emptyStore(): LocalStore {
-    return { projects: [], features: [], functions: [], artifacts: [], analysisDocs: [], connections: [], epics: [], stories: [] };
+    return { companies: [], projects: [], features: [], functions: [], artifacts: [], analysisDocs: [], connections: [], epics: [], stories: [] };
 }
 
 function load(): LocalStore {
     try {
         const raw = localStorage.getItem(LS_KEY);
         if (!raw) return emptyStore();
-        return { ...emptyStore(), ...JSON.parse(raw) };
+        return normalizeStore({ ...emptyStore(), ...JSON.parse(raw) });
     } catch { return emptyStore(); }
 }
 
@@ -58,12 +62,138 @@ function save(store: LocalStore) {
 
 const now = () => Date.now();
 const uuid = () => crypto.randomUUID();
+const DEFAULT_COMPANY_NAME = 'My Projects';
+
+function ensureCompanyForProject(store: LocalStore, project: RepoProject): string {
+    const existingId = project.company_id;
+    if (existingId && store.companies.some(c => c.id === existingId)) return existingId;
+
+    let fallbackCompany = store.companies.find(c => c.name === DEFAULT_COMPANY_NAME);
+    if (!fallbackCompany) {
+        fallbackCompany = {
+            id: uuid(),
+            name: DEFAULT_COMPANY_NAME,
+            description: null,
+            created_at: now(),
+            updated_at: now(),
+        };
+        store.companies.push(fallbackCompany);
+    }
+    project.company_id = fallbackCompany.id;
+    return fallbackCompany.id;
+}
+
+function normalizeStore(store: LocalStore): LocalStore {
+    if (store.projects.length > 0 && store.companies.length === 0) {
+        store.companies.push({
+            id: uuid(),
+            name: DEFAULT_COMPANY_NAME,
+            description: null,
+            created_at: now(),
+            updated_at: now(),
+        });
+    }
+
+    store.projects = store.projects.map(project => {
+        const normalized: RepoProject = {
+            ...project,
+            company_id: (project as Partial<RepoProject>).company_id || '',
+        };
+        ensureCompanyForProject(store, normalized);
+        return normalized;
+    });
+
+    return store;
+}
+
+function mapCompaniesWithProjects(store: LocalStore): RepoCompany[] {
+    const projects = store.projects
+        .map(p => ({
+            ...p,
+            _count: {
+                features: store.features.filter(f => f.project_id === p.id).length,
+                artifacts: store.artifacts.filter(a => a.project_id === p.id).length,
+                connections: store.connections.filter(c => c.project_id === p.id).length,
+            },
+        }))
+        .sort((a, b) => b.updated_at - a.updated_at);
+    return store.companies
+        .map(company => ({
+            ...company,
+            projects: projects.filter(project => project.company_id === company.id),
+        }))
+        .sort((a, b) => b.updated_at - a.updated_at);
+}
+
+// ── Companies ───────────────────────────────────────────
+
+export function localGetCompanies(): RepoCompany[] {
+    const store = load();
+    return mapCompaniesWithProjects(store);
+}
+
+export function localGetCompany(id: string): RepoCompany | null {
+    const store = load();
+    const company = store.companies.find(c => c.id === id);
+    if (!company) return null;
+    return {
+        ...company,
+        projects: localGetProjects(id),
+    };
+}
+
+export function localCreateCompany(data: CreateCompanyInput): RepoCompany {
+    const store = load();
+    const company: RepoCompany = {
+        id: uuid(),
+        name: data.name,
+        description: data.description || null,
+        created_at: now(),
+        updated_at: now(),
+        projects: [],
+    };
+    store.companies.push(company);
+    save(store);
+    return company;
+}
+
+export function localUpdateCompany(id: string, data: UpdateCompanyInput): RepoCompany {
+    const store = load();
+    const idx = store.companies.findIndex(c => c.id === id);
+    if (idx === -1) throw new Error('Company not found');
+    if (data.name !== undefined) store.companies[idx].name = data.name;
+    if (data.description !== undefined) store.companies[idx].description = data.description ?? null;
+    store.companies[idx].updated_at = now();
+    save(store);
+    return store.companies[idx];
+}
+
+export function localDeleteCompany(id: string): void {
+    const store = load();
+    const projectIds = store.projects.filter(p => p.company_id === id).map(p => p.id);
+
+    store.companies = store.companies.filter(c => c.id !== id);
+    store.projects = store.projects.filter(p => p.company_id !== id);
+    store.features = store.features.filter(f => !projectIds.includes(f.project_id));
+    store.artifacts = store.artifacts.filter(a => !a.project_id || !projectIds.includes(a.project_id));
+    store.analysisDocs = store.analysisDocs.filter(d => !projectIds.includes(d.project_id));
+    store.connections = store.connections.filter(c => !projectIds.includes(c.project_id));
+    const epicIds = store.epics.filter(e => projectIds.includes(e.project_id)).map(e => e.id);
+    store.stories = store.stories.filter(st => !epicIds.includes(st.epic_id));
+    store.epics = store.epics.filter(e => !projectIds.includes(e.project_id));
+    store.functions = store.functions.filter(fn => {
+        const feature = store.features.find(f => f.id === fn.feature_id);
+        return Boolean(feature);
+    });
+    save(store);
+}
 
 // ── Projects ────────────────────────────────────────────
 
-export function localGetProjects(): RepoProject[] {
+export function localGetProjects(companyId?: string): RepoProject[] {
     const s = load();
     return s.projects
+        .filter(p => !companyId || p.company_id === companyId)
         .map(p => ({
             ...p,
             _count: {
@@ -82,9 +212,27 @@ export function localGetProject(id: string): RepoProject | null {
 
 export function localCreateProject(data: CreateProjectInput): RepoProject {
     const s = load();
+    const companyId = data.companyId || data.company_id;
+    const resolvedCompanyId = companyId && s.companies.some(c => c.id === companyId)
+        ? companyId
+        : (() => {
+            if (s.companies.length === 0) {
+                const defaultCompany: RepoCompany = {
+                    id: uuid(),
+                    name: DEFAULT_COMPANY_NAME,
+                    description: null,
+                    created_at: now(),
+                    updated_at: now(),
+                    projects: [],
+                };
+                s.companies.push(defaultCompany);
+            }
+            return s.companies[0].id;
+        })();
     const project: RepoProject = {
         id: uuid(), name: data.name, description: data.description || null,
         prd_content: null, epics_content: null, created_at: now(), updated_at: now(),
+        company_id: resolvedCompanyId,
         _count: { features: 0, artifacts: 0, connections: 0 },
     };
     s.projects.push(project);
@@ -103,6 +251,8 @@ export function localUpdateProject(id: string, data: UpdateProjectInput): RepoPr
     if (data.prdContent !== undefined) p.prd_content = data.prdContent ?? null;
     if (data.epics_content !== undefined) p.epics_content = data.epics_content ?? null;
     if (data.epicsContent !== undefined) p.epics_content = data.epicsContent ?? null;
+    if (data.company_id !== undefined) p.company_id = data.company_id;
+    if (data.companyId !== undefined) p.company_id = data.companyId;
     p.updated_at = now();
     save(s);
     return p;

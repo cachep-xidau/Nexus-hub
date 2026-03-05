@@ -4,7 +4,10 @@
 export const repoKeys = {
   all: ['repo'] as const,
   projects: () => [...repoKeys.all, 'projects'] as const,
+  projectsByCompany: (companyId: string) => [...repoKeys.projects(), 'company', companyId] as const,
   project: (id: string) => [...repoKeys.all, 'project', id] as const,
+  companies: () => [...repoKeys.all, 'companies'] as const,
+  company: (id: string) => [...repoKeys.all, 'company', id] as const,
   features: (projectId: string) => [...repoKeys.all, 'features', projectId] as const,
   functions: (featureId: string) => [...repoKeys.all, 'functions', featureId] as const,
   artifact: (id: string) => [...repoKeys.all, 'artifact', id] as const,

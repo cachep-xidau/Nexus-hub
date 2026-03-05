@@ -32,9 +32,18 @@ import {
   Globe,
   Layers,
   LogOut,
+  FolderOpen,
+  Plus,
+  Loader2,
 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { useAuth } from '../../lib/auth';
+import { useCompanies, useCreateCompany } from '../../lib/hooks/use-companies';
+import { useProjects } from '../../lib/hooks/use-repo-api';
+import {
+  buildEffectiveCompanies,
+  normalizeProjectCompanyId,
+} from '../../lib/repo-company-fallback';
 import {
   getDomainBySlug,
   getArticlesByDomain,
@@ -45,11 +54,12 @@ import {
 const SIDEBAR_COLLAPSED_KEY = 'ui.sidebarCollapsed';
 const SIDEBAR_SECTIONS_KEY = 'ui.sidebarSections';
 
-type SidebarSectionKey = 'main' | 'knowledge' | 'channels' | 'system' | 'sanMarketing';
+type SidebarSectionKey = 'main' | 'repo' | 'knowledge' | 'channels' | 'system' | 'sanMarketing';
 type SidebarSectionState = Record<SidebarSectionKey, boolean>;
 
 const DEFAULT_SECTION_STATE: SidebarSectionState = {
   main: true,
+  repo: true,
   knowledge: true,
   channels: true,
   system: true,
@@ -246,6 +256,12 @@ export function Sidebar() {
     if (location.pathname.startsWith('/knowledge')) stored.knowledge = true;
     return stored;
   });
+  const [expandedCompanies, setExpandedCompanies] = useState<Record<string, boolean>>({});
+  const [showCreateCompany, setShowCreateCompany] = useState(false);
+  const [newCompanyName, setNewCompanyName] = useState('');
+  const companiesQuery = useCompanies();
+  const allProjectsQuery = useProjects();
+  const createCompanyMutation = useCreateCompany();
 
   useEffect(() => {
     try {
@@ -278,8 +294,35 @@ export function Sidebar() {
     setSectionsOpen(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const toggleCompany = (companyId: string) => {
+    setExpandedCompanies(prev => ({ ...prev, [companyId]: !prev[companyId] }));
+  };
+
   const isKnowledgeSectionOpen = sectionsOpen.knowledge || location.pathname.startsWith('/knowledge');
+  const isRepoSectionOpen = sectionsOpen.repo || location.pathname.startsWith('/repo');
   const isSanSectionOpen = sectionsOpen.sanMarketing || location.pathname.startsWith('/san-marketing');
+  const companies = companiesQuery.data ?? [];
+  const allProjects = allProjectsQuery.data ?? [];
+  const effectiveCompanies = buildEffectiveCompanies(companies, allProjects);
+  const projectsByCompany = allProjects.reduce<Record<string, typeof allProjects>>((acc, project) => {
+    const companyId = normalizeProjectCompanyId(project.company_id);
+    if (!acc[companyId]) acc[companyId] = [];
+    acc[companyId].push(project);
+    return acc;
+  }, {});
+
+  const handleCreateCompany = async () => {
+    if (!newCompanyName.trim() || createCompanyMutation.isPending) return;
+    try {
+      const created = await createCompanyMutation.mutateAsync({ name: newCompanyName.trim() });
+      setShowCreateCompany(false);
+      setNewCompanyName('');
+      setExpandedCompanies(prev => ({ ...prev, [created.id]: true }));
+      navigate(`/repo/${created.id}`);
+    } catch (error) {
+      console.error('Failed to create company', error);
+    }
+  };
 
   const pathParts = location.pathname.split('/').filter(Boolean);
   const isKnowledgeDomain = pathParts[0] === 'knowledge' && pathParts.length >= 2;
@@ -364,14 +407,94 @@ export function Sidebar() {
               </div>
             )}
 
-            <Link
-              to="/repo"
-              className={`nav-item ${location.pathname.startsWith('/repo') ? 'active' : ''}`}
+            <button
+              type="button"
+              className={`nav-item nav-group-toggle ${sectionsOpen.repo ? 'open' : ''} ${location.pathname.startsWith('/repo') ? 'active' : ''}`}
+              onClick={() => {
+                if (sidebarCollapsed) navigate('/repo');
+                else toggleSection('repo');
+              }}
               title="Repo"
             >
               <Database className="icon" size={18} />
               <span className="nav-label">Repo</span>
-            </Link>
+              <span className="nav-chevron">
+                {isRepoSectionOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </span>
+            </button>
+            {isRepoSectionOpen && !sidebarCollapsed && (
+              <div className="nav-sub-items">
+                {companiesQuery.isLoading ? (
+                  <div className="nav-item nav-sub-item" style={{ cursor: 'default' }}>
+                    <Loader2 className="icon spin" size={14} />
+                    <span className="nav-label">Loading companies...</span>
+                  </div>
+                ) : effectiveCompanies.length === 0 ? (
+                  <div className="nav-item nav-sub-item" style={{ cursor: 'default' }}>
+                    <FolderOpen className="icon" size={14} />
+                    <span className="nav-label">No companies</span>
+                  </div>
+                ) : (
+                  effectiveCompanies.map((company) => {
+                    const companyProjects = projectsByCompany[company.id] ?? [];
+                    const companyOpen = expandedCompanies[company.id] ?? location.pathname.startsWith(`/repo/${company.id}`);
+                    return (
+                      <div key={company.id}>
+                        <button
+                          type="button"
+                          className={`nav-item nav-sub-item nav-group-toggle ${location.pathname === `/repo/${company.id}` ? 'active' : ''}`}
+                          onClick={() => navigate(`/repo/${company.id}`)}
+                          title={company.name}
+                        >
+                          <span
+                            className="nav-chevron"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              toggleCompany(company.id);
+                            }}
+                          >
+                            {companyOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          </span>
+                          <FolderOpen className="icon" size={14} />
+                          <span className="nav-label">{company.name}</span>
+                        </button>
+                        {companyOpen && (
+                          <div className="nav-sub-items" style={{ paddingLeft: '1.8rem' }}>
+                            {companyProjects.map(project => (
+                              <button
+                                key={project.id}
+                                type="button"
+                                className={`nav-item nav-sub-item ${location.pathname === `/repo/${company.id}/${project.id}` ? 'active' : ''}`}
+                                onClick={() => navigate(`/repo/${company.id}/${project.id}`)}
+                                title={project.name}
+                              >
+                                <FileText className="icon" size={14} />
+                                <span className="nav-label">{project.name}</span>
+                              </button>
+                            ))}
+                            {companyProjects.length === 0 && (
+                              <div className="nav-item nav-sub-item" style={{ cursor: 'default' }}>
+                                <span className="nav-label">No projects</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+                <button
+                  type="button"
+                  className="nav-item nav-sub-item"
+                  onClick={() => setShowCreateCompany(true)}
+                  title="Add Company"
+                >
+                  <Plus className="icon" size={14} />
+                  <span className="nav-label">Add Company</span>
+                </button>
+              </div>
+            )}
           </>
         )}
 
@@ -453,6 +576,47 @@ export function Sidebar() {
           </>
         )}
       </nav>
+
+      {showCreateCompany && (
+        <div className="modal-overlay" onClick={() => setShowCreateCompany(false)}>
+          <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Create Company</h3>
+            </div>
+            <label className="form-label">Company name</label>
+            <input
+              type="text"
+              className="form-input"
+              value={newCompanyName}
+              onChange={(event) => setNewCompanyName(event.target.value)}
+              placeholder="e.g. My Projects"
+              autoFocus
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setShowCreateCompany(false);
+                if (event.key === 'Enter') void handleCreateCompany();
+              }}
+            />
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowCreateCompany(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!newCompanyName.trim() || createCompanyMutation.isPending}
+                onClick={() => void handleCreateCompany()}
+              >
+                {createCompanyMutation.isPending ? <Loader2 className="icon spin" size={14} /> : <Plus className="icon" size={14} />}
+                <span>Create</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="sidebar-footer">
         <ThemeToggle />

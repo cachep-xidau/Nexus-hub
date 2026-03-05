@@ -34,9 +34,10 @@ const TABS: { key: Tab; label: string; icon: typeof FileText }[] = [
 ];
 
 export function ProjectDetail() {
-    const { id } = useParams<{ id: string }>();
+    const { companyId, projectId } = useParams<{ companyId: string; projectId: string }>();
     const navigate = useNavigate();
-    const projectId = id!;
+    const resolvedProjectId = projectId || '';
+    const backToRepoPath = companyId ? `/repo/${companyId}` : '/repo';
 
     // Read ?tab= from URL
     const initialTab = (() => {
@@ -54,9 +55,9 @@ export function ProjectDetail() {
     const [showEpicsChat, setShowEpicsChat] = useState(false);
     const [artifactRefreshKey, setArtifactRefreshKey] = useState(0);
 
-    const projectQuery = useProject(projectId);
-    const featuresQuery = useFeatures(projectId);
-    const analysisDocsQuery = useAnalysisDocs(projectId);
+    const projectQuery = useProject(resolvedProjectId);
+    const featuresQuery = useFeatures(resolvedProjectId);
+    const analysisDocsQuery = useAnalysisDocs(resolvedProjectId);
     const updateProjectMutation = useUpdateProject();
 
     const project = projectQuery.data ?? null;
@@ -74,7 +75,7 @@ export function ProjectDetail() {
         setError('');
         try {
             await updateProjectMutation.mutateAsync({
-                id: projectId,
+                id: resolvedProjectId,
                 data: { prd_content: content },
             });
             await projectQuery.refetch();
@@ -103,7 +104,7 @@ export function ProjectDetail() {
             <div className="empty-state">
                 <AlertCircle size={32} style={{ color: 'var(--error)' }} />
                 <h3>{error || queryErrorMessage || 'Project not found'}</h3>
-                <button className="btn-secondary" onClick={() => navigate('/repo')}>
+                <button className="btn-secondary" onClick={() => navigate(backToRepoPath)}>
                     <ArrowLeft size={14} /> Back to Repo
                 </button>
             </div>
@@ -119,7 +120,7 @@ export function ProjectDetail() {
         <>
             {/* Header */}
             <div className="project-header">
-                <button className="icon-btn-subtle" onClick={() => navigate('/repo')} title="Back">
+                <button className="icon-btn-subtle" onClick={() => navigate(backToRepoPath)} title="Back">
                     <ArrowLeft size={18} />
                 </button>
                 <div className="project-header-info">
@@ -156,7 +157,7 @@ export function ProjectDetail() {
 
                         {/* Guide */}
                         <GuideSection
-                            projectId={projectId}
+                            projectId={resolvedProjectId}
                             hasPrd={!!project.prd_content}
                             hasFeatures={totalFeatures > 0}
                             hasArtifacts={totalArtifacts > 0}
@@ -309,7 +310,7 @@ export function ProjectDetail() {
                         </div>
 
                         {/* Artifacts Table */}
-                        <ArtifactsTable projectId={projectId} refreshKey={artifactRefreshKey} />
+                        <ArtifactsTable projectId={resolvedProjectId} refreshKey={artifactRefreshKey} />
 
                         {/* Feature Tree — collapsible for audit */}
                         <details className="feature-tree-collapsible" style={{ marginTop: 'var(--space-4)' }}>
@@ -318,7 +319,7 @@ export function ProjectDetail() {
                             </summary>
                             <div style={{ marginTop: 'var(--space-3)' }}>
                                 <FeatureTree
-                                    projectId={projectId}
+                                    projectId={resolvedProjectId}
                                     features={features}
                                     onGenerate={(fnId) => {
                                         setGenerateFunctionId(fnId);
@@ -332,13 +333,13 @@ export function ProjectDetail() {
 
                 {activeTab === 'analysis' && (
                     <AnalysisTab
-                        projectId={projectId}
+                        projectId={resolvedProjectId}
                         projectName={project.name}
                     />
                 )}
 
                 {activeTab === 'connections' && (
-                    <ConnectionsTab projectId={projectId} />
+                    <ConnectionsTab projectId={resolvedProjectId} />
                 )}
 
                 {activeTab === 'prototype' && (
@@ -384,7 +385,7 @@ export function ProjectDetail() {
                             <PanelResizeHandle className="resize-handle" />
                             <Panel defaultSize={65} minSize={40}>
                                 <PrototypePanel
-                                    projectId={projectId}
+                                    projectId={resolvedProjectId}
                                     prdContent={project.prd_content}
                                 />
                             </Panel>
@@ -395,7 +396,7 @@ export function ProjectDetail() {
 
             {showGenerate && project.prd_content && (
                 <GenerateArtifactsModal
-                    projectId={projectId}
+                    projectId={resolvedProjectId}
                     prdContent={project.prd_content}
                     features={features}
                     preSelectedFunctionId={generateFunctionId}
@@ -414,7 +415,7 @@ export function ProjectDetail() {
 
             {showPrdChat && (
                 <PrdChat
-                    projectId={projectId}
+                    projectId={resolvedProjectId}
                     projectName={project.name}
                     existingPrd={project.prd_content || ''}
                     onClose={() => setShowPrdChat(false)}
@@ -427,7 +428,7 @@ export function ProjectDetail() {
 
             {showEpicsChat && (
                 <EpicsChat
-                    projectId={projectId}
+                    projectId={resolvedProjectId}
                     projectName={project.name}
                     prdContent={project.prd_content || ''}
                     analysisDocs={(analysisDocsQuery.data ?? []).filter(d => ['prd', 'product-brief'].includes(d.type))}

@@ -133,7 +133,8 @@ function AppContent() {
           <Route path="/knowledge/:domainSlug/:articleSlug" element={<ProtectedRoute><KnowledgeHub /></ProtectedRoute>} />
           <Route path="/tableplus" element={<ProtectedRoute><TablePlus /></ProtectedRoute>} />
           <Route path="/repo" element={<ProtectedRoute><Repo /></ProtectedRoute>} />
-          <Route path="/repo/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
+          <Route path="/repo/:companyId" element={<ProtectedRoute><Repo /></ProtectedRoute>} />
+          <Route path="/repo/:companyId/:projectId" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
           <Route path="/board/:id" element={<ProtectedRoute><Board /></ProtectedRoute>} />
           <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
           <Route path="/gmail" element={<ProtectedRoute><Gmail /></ProtectedRoute>} />

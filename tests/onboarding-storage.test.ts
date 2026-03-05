@@ -31,7 +31,8 @@ describe('Onboarding Storage', () => {
   beforeEach(() => {
     localStorage.clear();
     // Reset Tauri store mock
-    (global as any).__tauri_store__ = null;
+    const globalWithStore = globalThis as typeof globalThis & { __tauri_store__?: unknown };
+    globalWithStore.__tauri_store__ = null;
   });
 
   afterEach(() => {

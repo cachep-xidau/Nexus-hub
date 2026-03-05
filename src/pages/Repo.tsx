@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Header } from '../components/layout/Header';
 import {
-    FolderOpen, Plus, MoreHorizontal, Loader2, X, Check, AlertCircle,
+    FolderOpen, Plus, MoreHorizontal, Loader2, X, Check, AlertCircle, Building2,
 } from 'lucide-react';
 import {
     useProjects,
@@ -10,6 +10,11 @@ import {
     useDeleteProject,
     type RepoProject,
 } from '../lib/hooks/use-repo-api';
+import { useCompanies } from '../lib/hooks/use-companies';
+import {
+    buildEffectiveCompanies,
+    normalizeProjectCompanyId,
+} from '../lib/repo-company-fallback';
 
 function timeAgo(ts: number): string {
     const diff = Date.now() - ts;
@@ -43,7 +48,7 @@ function ProjectCard({ project, onDelete }: { project: RepoProject; onDelete: (i
     }, [menuOpen]);
 
     return (
-        <div className="repo-card" onClick={() => navigate(`/repo/${project.id}`)}>
+        <div className="repo-card" onClick={() => navigate(`/repo/${project.company_id}/${project.id}`)}>
             {/* Menu */}
             <div className="repo-card-menu" ref={menuRef}>
                 <button onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }} className="icon-btn-subtle">
@@ -51,7 +56,7 @@ function ProjectCard({ project, onDelete }: { project: RepoProject; onDelete: (i
                 </button>
                 {menuOpen && (
                     <div className="repo-card-dropdown" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => { navigate(`/repo/${project.id}`); setMenuOpen(false); }}>Open Project</button>
+                        <button onClick={() => { navigate(`/repo/${project.company_id}/${project.id}`); setMenuOpen(false); }}>Open Project</button>
                         <button onClick={() => { onDelete(project.id); setMenuOpen(false); }}
                             style={{ color: 'var(--error)' }}>Delete</button>
                     </div>
@@ -82,6 +87,7 @@ function ProjectCard({ project, onDelete }: { project: RepoProject; onDelete: (i
 
 export function Repo() {
     const navigate = useNavigate();
+    const { companyId: routeCompanyId } = useParams<{ companyId?: string }>();
     const [error, setError] = useState('');
 
     // Create modal
@@ -89,30 +95,71 @@ export function Repo() {
     const [newName, setNewName] = useState('');
     const [newDesc, setNewDesc] = useState('');
 
+    const companiesQuery = useCompanies();
     const projectsQuery = useProjects();
     const createProjectMutation = useCreateProject();
     const deleteProjectMutation = useDeleteProject();
 
-    const projects = projectsQuery.data ?? [];
-    const loading = projectsQuery.isLoading;
+    const companiesData = companiesQuery.data;
+    const allProjectsData = projectsQuery.data;
+    const allProjects = useMemo(() => allProjectsData ?? [], [allProjectsData]);
+    const effectiveCompanies = useMemo(
+        () => buildEffectiveCompanies(companiesData, allProjects),
+        [allProjects, companiesData]
+    );
+    const activeCompany = effectiveCompanies.find(company => company.id === routeCompanyId) ?? null;
+    const projects = activeCompany
+        ? allProjects.filter(project => normalizeProjectCompanyId(project.company_id) === activeCompany.id)
+        : [];
+    const loading = projectsQuery.isLoading || companiesQuery.isLoading;
     const creating = createProjectMutation.isPending;
-    const queryError = projectsQuery.error
-        ? (projectsQuery.error instanceof Error ? projectsQuery.error.message : 'Failed to load projects')
+    const queryErrorSource = projectsQuery.error || companiesQuery.error;
+    const queryError = queryErrorSource
+        ? (queryErrorSource instanceof Error ? queryErrorSource.message : 'Failed to load repository data')
         : '';
     const visibleError = error || queryError;
+
+    const legacyProject = routeCompanyId
+        ? allProjects.find(project => project.id === routeCompanyId)
+        : undefined;
+    const isUnknownCompanyRoute = Boolean(routeCompanyId) && !activeCompany && !legacyProject;
+
+    useEffect(() => {
+        if (companiesQuery.isLoading || projectsQuery.isLoading) return;
+        if (!routeCompanyId) {
+            if (effectiveCompanies.length > 0) navigate(`/repo/${effectiveCompanies[0].id}`, { replace: true });
+            return;
+        }
+
+        if (activeCompany) return;
+
+        if (legacyProject) {
+            navigate(`/repo/${normalizeProjectCompanyId(legacyProject.company_id)}/${legacyProject.id}`, { replace: true });
+        }
+    }, [
+        activeCompany,
+        effectiveCompanies,
+        companiesQuery.isLoading,
+        navigate,
+        legacyProject,
+        projectsQuery.isLoading,
+        routeCompanyId,
+    ]);
 
     const handleCreate = async () => {
         if (!newName.trim() || creating) return;
         setError('');
         try {
+            if (!activeCompany) throw new Error('Please select a company before creating a project');
             const created = await createProjectMutation.mutateAsync({
                 name: newName.trim(),
                 description: newDesc.trim() || undefined,
+                companyId: activeCompany.id,
             });
             setNewName('');
             setNewDesc('');
             setShowCreate(false);
-            navigate(`/repo/${created.id}`);
+            navigate(`/repo/${created.company_id}/${created.id}`);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create project');
         }
@@ -130,7 +177,10 @@ export function Repo() {
 
     return (
         <>
-            <Header title="Projects Repository" subtitle="Manage your BSA projects and artifacts" />
+            <Header
+                title={activeCompany ? activeCompany.name : 'Projects Repository'}
+                subtitle={activeCompany ? 'Repo > Company' : 'Manage your BSA projects and artifacts'}
+            />
 
             <div className="page-content">
                 {loading ? (
@@ -145,8 +195,14 @@ export function Repo() {
                     </div>
                 ) : (
                     <div className="repo-content">
+                        {!activeCompany ? (
+                            <div className="empty-state">
+                                <Building2 size={32} />
+                                <h3>{isUnknownCompanyRoute ? 'Company not found' : 'No company selected'}</h3>
+                            </div>
+                        ) : null}
                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
-                            <button className="btn-primary" onClick={() => setShowCreate(true)}>
+                            <button className="btn-primary" onClick={() => setShowCreate(true)} disabled={!activeCompany}>
                                 <Plus size={14} />
                                 <span>Add new project</span>
                             </button>
@@ -156,6 +212,15 @@ export function Repo() {
                             {projects.map(p => (
                                 <ProjectCard key={p.id} project={p} onDelete={handleDelete} />
                             ))}
+                            {activeCompany && projects.length === 0 && (
+                                <div className="repo-card repo-card--add" role="status">
+                                    <div className="repo-add-icon">
+                                        <FolderOpen size={20} />
+                                    </div>
+                                    <h4>No projects yet</h4>
+                                    <p>Create the first project for this company.</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

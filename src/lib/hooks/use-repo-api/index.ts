@@ -35,6 +35,8 @@ export {
 export { repoKeys } from './keys';
 export {
   type ApiProject,
+  type ApiCompany,
+  type RepoCompany,
   type RepoProject,
   type ApiFeature,
   type RepoFeature,

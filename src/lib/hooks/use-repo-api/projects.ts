@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api-client';
 import { repoKeys } from './keys';
+import { normalizeProjectCompanyId } from '../../repo-company-fallback';
 import {
   isoToTimestamp,
   type ApiProject,
@@ -19,17 +20,19 @@ import {
 } from '../../repo-local-store';
 
 function mapProject(project: ApiProject): RepoProject {
+  const companyId = normalizeProjectCompanyId(project.companyId);
   return {
     ...project,
     prd_content: project.prdContent,
     epics_content: project.epicsContent ?? null,
+    company_id: companyId,
     created_at: isoToTimestamp(project.createdAt),
     updated_at: isoToTimestamp(project.updatedAt),
   };
 }
 
 function toApiProjectUpdate(data: UpdateProjectInput) {
-  const { prd_content, prdContent, epics_content, epicsContent, ...rest } = data;
+  const { prd_content, prdContent, epics_content, epicsContent, company_id, companyId, ...rest } = data;
   return {
     ...rest,
     ...(prdContent !== undefined
@@ -42,19 +45,25 @@ function toApiProjectUpdate(data: UpdateProjectInput) {
       : epics_content !== undefined
         ? { epicsContent: epics_content }
         : {}),
+    ...(companyId !== undefined
+      ? { companyId }
+      : company_id !== undefined
+        ? { companyId: company_id }
+        : {}),
   };
 }
 
 // GET /api/projects — falls back to localStorage
-export function useProjects() {
+export function useProjects(companyId?: string) {
   return useQuery({
-    queryKey: repoKeys.projects(),
+    queryKey: companyId ? repoKeys.projectsByCompany(companyId) : repoKeys.projects(),
     queryFn: async () => {
       try {
-        const projects = await api.get<ApiProject[]>('/api/projects');
+        const endpoint = companyId ? `/api/projects?companyId=${encodeURIComponent(companyId)}` : '/api/projects';
+        const projects = await api.get<ApiProject[]>(endpoint);
         return projects.map(mapProject);
       } catch {
-        return localGetProjects();
+        return localGetProjects(companyId);
       }
     },
   });
@@ -83,15 +92,20 @@ export function useCreateProject() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: CreateProjectInput) => {
+      const payload = {
+        ...data,
+        companyId: data.companyId ?? data.company_id,
+      };
       try {
-        const created = await api.post<ApiProject>('/api/projects', data);
+        const created = await api.post<ApiProject>('/api/projects', payload);
         return mapProject(created);
       } catch {
-        return localCreateProject(data);
+        return localCreateProject(payload);
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repoKeys.projects() });
+      queryClient.invalidateQueries({ queryKey: repoKeys.companies() });
     },
   });
 }
@@ -128,6 +142,7 @@ export function useUpdateProject() {
     onSettled: (_data, _err, { id }) => {
       queryClient.invalidateQueries({ queryKey: repoKeys.project(id) });
       queryClient.invalidateQueries({ queryKey: repoKeys.projects() });
+      queryClient.invalidateQueries({ queryKey: repoKeys.companies() });
     },
   });
 }
@@ -145,6 +160,7 @@ export function useDeleteProject() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: repoKeys.projects() });
+      queryClient.invalidateQueries({ queryKey: repoKeys.companies() });
     },
   });
 }

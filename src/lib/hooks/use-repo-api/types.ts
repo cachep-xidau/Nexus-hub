@@ -17,11 +17,19 @@ export interface ApiProject extends BaseEntity {
   description: string | null;
   prdContent: string | null;
   epicsContent: string | null;
+  companyId: string;
   _count?: {
     features: number;
     artifacts: number;
     connections: number;
   };
+}
+
+export interface ApiCompany extends BaseEntity {
+  id: string;
+  name: string;
+  description: string | null;
+  projects?: ApiProject[];
 }
 
 export interface ApiFunction extends BaseEntity {
@@ -104,6 +112,7 @@ export interface RepoProject {
   description: string | null;
   prd_content: string | null;
   epics_content: string | null;
+  company_id: string;
   created_at: number;
   updated_at: number;
   _count?: {
@@ -111,6 +120,15 @@ export interface RepoProject {
     artifacts: number;
     connections: number;
   };
+}
+
+export interface RepoCompany {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: number;
+  updated_at: number;
+  projects?: RepoProject[];
 }
 
 export interface RepoFunction {
@@ -201,6 +219,8 @@ export interface RepoEpic {
 export type CreateProjectInput = {
   name: string;
   description?: string;
+  company_id?: string;
+  companyId?: string;
 };
 
 export type UpdateProjectInput = {
@@ -210,6 +230,18 @@ export type UpdateProjectInput = {
   prdContent?: string;
   epics_content?: string;
   epicsContent?: string;
+  company_id?: string;
+  companyId?: string;
+};
+
+export type CreateCompanyInput = {
+  name: string;
+  description?: string;
+};
+
+export type UpdateCompanyInput = {
+  name?: string;
+  description?: string;
 };
 
 export type CreateFeatureInput = {

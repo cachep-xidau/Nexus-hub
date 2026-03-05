@@ -41,7 +41,7 @@ export function Login() {
         await register(email, password, name || undefined);
       }
       navigate('/');
-    } catch (e) {
+    } catch {
       // Error is handled by useAuth hook
     }
   };
